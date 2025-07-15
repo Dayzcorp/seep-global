@@ -77,3 +77,10 @@ textarea {
   flex-direction: column;
   gap: 10px;
 }
+
+
+.dashboard {
+  padding: 20px;
+  max-width: 600px;
+  margin: 0 auto;
+}
