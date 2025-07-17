@@ -2,11 +2,9 @@ import React, { useState } from 'react';
 
 export default function Settings({ onClose }) {
   const [botName, setBotName] = useState(sessionStorage.getItem('botName') || 'SEEP');
-  const [apiKey, setApiKey] = useState(sessionStorage.getItem('apiKey') || '');
 
   const save = () => {
     sessionStorage.setItem('botName', botName);
-    sessionStorage.setItem('apiKey', apiKey);
     onClose();
   };
 
@@ -17,10 +15,6 @@ export default function Settings({ onClose }) {
         <label>
           Bot name
           <input value={botName} onChange={e => setBotName(e.target.value)} />
-        </label>
-        <label>
-          OpenRouter API key
-          <input value={apiKey} onChange={e => setApiKey(e.target.value)} />
         </label>
         <label>
           Model
