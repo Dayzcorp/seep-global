@@ -31,14 +31,12 @@ export default function App() {
 
     const botPlaceholder = { sender: 'bot', text: '', time: new Date().toLocaleTimeString() };
     setMessages(prev => [...prev, botPlaceholder]);
-    const apiKey = sessionStorage.getItem('apiKey') || '';
 
     try {
       const response = await fetch('/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-openrouter-key': apiKey,
         },
         body: JSON.stringify({ message: userMsg.text }),
       });
