@@ -12,6 +12,8 @@ function Message({ sender, text, time }) {
 }
 
 export default function App() {
+  const params = new URLSearchParams(window.location.search);
+  const botName = params.get('bot_name') || localStorage.getItem('botName') || 'SEEP';
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,6 +23,16 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    fetch(`/bot/${botName}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.welcomeMessage) {
+          setMessages([{ sender: 'bot', text: data.welcomeMessage, time: new Date().toLocaleTimeString() }]);
+        }
+      });
+  }, [botName]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -76,13 +88,13 @@ export default function App() {
   return (
     <div className="container">
       <header>
-        <h1>{localStorage.getItem('botName') || 'SEEP'} Assistant</h1>
+        <h1>{botName} Assistant</h1>
         <button onClick={() => setShowSettings(true)}>Settings</button>
         <Link to="/dashboard"><button>Dashboard</button></Link>
       </header>
       <div className="chat">
         {messages.map((m, i) => <Message key={i} {...m} />)}
-        {loading && <div className="typing">{(localStorage.getItem('botName') || 'SEEP')} is typing...</div>}
+        {loading && <div className="typing">{botName} is typing...</div>}
         <div ref={bottomRef} />
       </div>
       <div className="input">
