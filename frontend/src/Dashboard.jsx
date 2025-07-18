@@ -74,52 +74,66 @@ export default function Dashboard() {
     uniqueVisitors: usage.uniqueVisitors,
     successRate: (usage.successRate * 100).toFixed(1),
     conversions: usage.conversions,
+    tokensUsed: usage.tokensUsed,
+    tokenLimit: usage.tokenLimit,
   };
+  const usagePct = Math.min(100, (display.tokensUsed / display.tokenLimit) * 100);
 
   return (
-    <div className="dashboard">
-      <section className="analytics">
-        <h2 className="section-title">Usage Analytics</h2>
-        <div className="stats-grid">
-          <div className="card">
-            <i className="fa-solid fa-comments"></i>
-            <p className="stat-num">{display.totalChats}</p>
-            <p className="stat-label">Total chats</p>
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <section>
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-4">
+          <i className="fa-solid fa-chart-column text-indigo-500" /> Usage Analytics
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow p-4 text-center flex flex-col items-center">
+            <i className="fa-solid fa-comments text-indigo-500 mb-1"></i>
+            <p className="font-bold text-lg">{display.totalChats}</p>
+            <p className="text-sm text-gray-500">Total chats</p>
           </div>
-          <div className="card">
-            <i className="fa-solid fa-message"></i>
-            <p className="stat-num">{display.monthlyMessages.toLocaleString()}</p>
-            <p className="stat-label">Monthly messages</p>
+          <div className="bg-white rounded-lg shadow p-4 text-center flex flex-col items-center">
+            <i className="fa-solid fa-message text-indigo-500 mb-1"></i>
+            <p className="font-bold text-lg">{display.monthlyMessages.toLocaleString()}</p>
+            <p className="text-sm text-gray-500">Monthly messages</p>
           </div>
-          <div className="card">
-            <i className="fa-solid fa-chart-line"></i>
-            <p className="stat-num">{display.avgMessages}</p>
-            <p className="stat-label">Avg. messages/chat</p>
+          <div className="bg-white rounded-lg shadow p-4 text-center flex flex-col items-center">
+            <i className="fa-solid fa-chart-line text-indigo-500 mb-1"></i>
+            <p className="font-bold text-lg">{display.avgMessages}</p>
+            <p className="text-sm text-gray-500">Avg. messages/chat</p>
           </div>
-          <div className="card">
-            <i className="fa-solid fa-user"></i>
-            <p className="stat-num">{display.uniqueVisitors}</p>
-            <p className="stat-label">Visitors</p>
+          <div className="bg-white rounded-lg shadow p-4 text-center flex flex-col items-center">
+            <i className="fa-solid fa-user text-indigo-500 mb-1"></i>
+            <p className="font-bold text-lg">{display.uniqueVisitors}</p>
+            <p className="text-sm text-gray-500">Visitors</p>
           </div>
-          <div className="card">
-            <i className="fa-solid fa-circle-check"></i>
-            <p className="stat-num">{display.successRate}%</p>
-            <p className="stat-label">Success rate</p>
+          <div className="bg-white rounded-lg shadow p-4 text-center flex flex-col items-center">
+            <i className="fa-solid fa-circle-check text-indigo-500 mb-1"></i>
+            <p className="font-bold text-lg">{display.successRate}%</p>
+            <p className="text-sm text-gray-500">Success rate</p>
           </div>
-          <div className="card">
-            <i className="fa-solid fa-bolt"></i>
-            <p className="stat-num">{display.conversions}</p>
-            <p className="stat-label">Conversions</p>
+          <div className="bg-white rounded-lg shadow p-4 text-center flex flex-col items-center">
+            <i className="fa-solid fa-bolt text-indigo-500 mb-1"></i>
+            <p className="font-bold text-lg">{display.conversions}</p>
+            <p className="text-sm text-gray-500">Conversions</p>
           </div>
-          <div className="card">
-            <p className="stat-num">{display.plan}</p>
-            <p className="stat-label">Plan</p>
+          <div className="bg-white rounded-lg shadow p-4 text-center flex flex-col items-center">
+            <p className="font-bold text-lg">{display.plan}</p>
+            <p className="text-sm text-gray-500">Plan</p>
           </div>
+        </div>
+        <div className="mt-4">
+          <p className="text-sm font-medium mb-1">Token usage</p>
+          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div className="bg-indigo-500 h-3" style={{ width: `${usagePct}%` }} />
+          </div>
+          <p className="text-xs mt-1 text-gray-500">{display.tokensUsed} / {display.tokenLimit} tokens</p>
         </div>
       </section>
 
       <section className="faqs">
-        <h2 className="section-title">FAQs</h2>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i className="fa-solid fa-question text-indigo-500" /> FAQs
+        </h2>
         <div className="faq-list">
           {faqs.map((f, i) => (
             <div key={i} className="faq-item">
@@ -144,7 +158,9 @@ export default function Dashboard() {
       </section>
 
       <section className="templates">
-        <h2 className="section-title">Message Templates</h2>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i className="fa-solid fa-envelope text-indigo-500" /> Message Templates
+        </h2>
         <div className="template-item">
           <label>
             Welcome greeting
@@ -172,12 +188,14 @@ export default function Dashboard() {
       </section>
 
       <section className="insights">
-        <h2 className="section-title">Product Insights</h2>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i className="fa-solid fa-box text-indigo-500" /> Product Insights
+        </h2>
         <div className="bestsellers">
           {bestsellers.length === 0 && <p>No data available</p>}
           {bestsellers.map((p, i) => (
-            <div key={i} className="card bestseller-card">
-              {p.image && <img src={p.image} alt={p.title} />}
+            <div key={i} className="bg-white rounded-lg shadow p-3 text-center">
+              {p.image && <img src={p.image} alt={p.title} className="mx-auto mb-1 max-w-[100px]" />}
               <p>{p.title}</p>
               <p className="inventory">Inventory: {p.inventory}</p>
             </div>
@@ -186,10 +204,16 @@ export default function Dashboard() {
       </section>
 
       <section className="suggestions">
-        <h2 className="section-title">Smart Suggestions</h2>
-        <div className="suggestions-list">
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i className="fa-solid fa-lightbulb text-indigo-500" /> Smart Suggestions
+        </h2>
+        <div className="grid gap-2 sm:grid-cols-3 suggestions-list">
           {suggestions.map((text, i) => (
-            <div key={i} className="card suggestion-card" onClick={clickSuggestion}>
+            <div
+              key={i}
+              className="bg-white rounded-lg shadow p-3 cursor-pointer hover:bg-indigo-50"
+              onClick={clickSuggestion}
+            >
               {text}
             </div>
           ))}

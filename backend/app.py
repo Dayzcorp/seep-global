@@ -8,12 +8,12 @@ import openai
 from dotenv import load_dotenv
 import requests
 import difflib
+from datetime import datetime
 
 load_dotenv()
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
-TOKEN_LIMIT = 2000
 
 app = Flask(__name__)
 CORS(app)
@@ -28,6 +28,9 @@ def init_db():
     )
     conn.execute(
         "CREATE TABLE IF NOT EXISTS faqs (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT UNIQUE, answer TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS usage (user TEXT, month TEXT, tokens INTEGER DEFAULT 0, plan TEXT DEFAULT 'Free', PRIMARY KEY(user, month))"
     )
     conn.commit()
     conn.close()
@@ -77,6 +80,38 @@ def add_faq(question: str, answer: str):
     conn.commit()
     conn.close()
 
+
+def get_user_usage_record(user: str):
+    month = datetime.utcnow().strftime("%Y-%m")
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT tokens, plan, month FROM usage WHERE user=? AND month=?",
+        (user, month),
+    )
+    row = cur.fetchone()
+    if not row:
+        conn.execute(
+            "INSERT OR REPLACE INTO usage (user, month, tokens, plan) VALUES (?, ?, 0, 'Free')",
+            (user, month),
+        )
+        conn.commit()
+        conn.close()
+        return {"tokens": 0, "plan": "Free"}
+    conn.close()
+    return {"tokens": row[0], "plan": row[1]}
+
+
+def add_user_tokens(user: str, amount: int):
+    month = datetime.utcnow().strftime("%Y-%m")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO usage (user, month, tokens, plan) VALUES (?, ?, ?, 'Free')"
+        " ON CONFLICT(user, month) DO UPDATE SET tokens=tokens + excluded.tokens",
+        (user, month, amount),
+    )
+    conn.commit()
+    conn.close()
+
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
 # Track sessions that mentioned the cart but didn't checkout
 abandoned_cart_flags = defaultdict(bool)
@@ -102,9 +137,11 @@ def chat():
     session_id = request.remote_addr
     usage = session_usage[session_id]
     stats["unique_visitors"].add(session_id)
-    if usage["tokens"] >= TOKEN_LIMIT:
+    user_record = get_user_usage_record(session_id)
+    limit = 5000 if user_record["plan"] == "Premium" else 500
+    if user_record["tokens"] >= limit:
         stats["failure"] += 1
-        return jsonify({"error": "limit", "message": "You\u2019ve hit your free usage limit. Upgrade to continue."}), 402
+        return jsonify({"error": "limit", "message": "You\u2019ve hit your plan usage limit."}), 402
 
     if not API_KEY:
         stats["failure"] += 1
@@ -148,7 +185,9 @@ def chat():
                 token = chunk.choices[0].delta.content or ""
                 full += token
                 yield token
-            usage["tokens"] += len(full.split())
+            token_count = len(full.split())
+            usage["tokens"] += token_count
+            add_user_tokens(session_id, token_count)
         except openai.AuthenticationError:
             success = False
             yield "[Invalid API key]"
@@ -175,6 +214,9 @@ def usage_stats():
     monthly_messages = sum(u["tokens"] for u in usage_values)
     avg_messages = monthly_messages / max(total_chats, 1)
     success_rate = stats["success"] / max(stats["success"] + stats["failure"], 1)
+    user_id = request.remote_addr
+    record = get_user_usage_record(user_id)
+    limit = 5000 if record["plan"] == "Premium" else 500
     return jsonify({
         "totalChats": total_chats,
         "monthlyMessages": monthly_messages,
@@ -182,7 +224,9 @@ def usage_stats():
         "uniqueVisitors": len(stats["unique_visitors"]),
         "successRate": success_rate,
         "conversions": stats["conversions"],
-        "plan": "Free Tier",
+        "plan": record["plan"],
+        "tokensUsed": record["tokens"],
+        "tokenLimit": limit,
     })
 
 
