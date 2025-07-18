@@ -16,6 +16,14 @@ app = Flask(__name__)
 CORS(app)
 
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
+# In-memory store for configuration and extended stats
+config = {"welcome_message": "", "tone": "Friendly", "business_name": ""}
+stats = {
+    "unique_visitors": set(),
+    "success": 0,
+    "failure": 0,
+    "conversions": 0,
+}
 
 
 def get_client():
@@ -26,10 +34,13 @@ def get_client():
 def chat():
     session_id = request.remote_addr
     usage = session_usage[session_id]
+    stats["unique_visitors"].add(session_id)
     if usage["tokens"] >= TOKEN_LIMIT:
+        stats["failure"] += 1
         return jsonify({"error": "limit", "message": "You\u2019ve hit your free usage limit. Upgrade to continue."}), 402
 
     if not API_KEY:
+        stats["failure"] += 1
         return jsonify({"error": "server_config", "message": "OpenRouter API key missing"}), 500
 
     data = request.get_json(force=True) or {}
@@ -37,6 +48,7 @@ def chat():
     usage["requests"] += 1
 
     def generate():
+        success = True
         try:
             client = get_client()
             response = client.chat.completions.create(
@@ -54,19 +66,57 @@ def chat():
                 yield token
             usage["tokens"] += len(full.split())
         except openai.AuthenticationError:
+            success = False
             yield "[Invalid API key]"
         except openai.RateLimitError:
+            success = False
             yield "[Rate limit exceeded]"
         except Exception:
+            success = False
             traceback.print_exc()
             yield "[Error fetching response]"
+        finally:
+            if success:
+                stats["success"] += 1
+            else:
+                stats["failure"] += 1
 
     return Response(stream_with_context(generate()), mimetype="text/plain")
 
 
 @app.route("/usage")
 def usage_stats():
-    return jsonify(session_usage)
+    usage_values = session_usage.values()
+    total_chats = sum(u["requests"] for u in usage_values)
+    monthly_messages = sum(u["tokens"] for u in usage_values)
+    avg_messages = monthly_messages / max(total_chats, 1)
+    success_rate = stats["success"] / max(stats["success"] + stats["failure"], 1)
+    return jsonify({
+        "totalChats": total_chats,
+        "monthlyMessages": monthly_messages,
+        "avgMessages": avg_messages,
+        "uniqueVisitors": len(stats["unique_visitors"]),
+        "successRate": success_rate,
+        "conversions": stats["conversions"],
+        "plan": "Free Tier",
+    })
+
+
+@app.route("/config", methods=["GET", "POST"])
+def config_route():
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        config["welcome_message"] = data.get("welcomeMessage", config["welcome_message"])
+        config["tone"] = data.get("tone", config["tone"])
+        config["business_name"] = data.get("businessName", config["business_name"])
+        return jsonify({"status": "ok"})
+    return jsonify(config)
+
+
+@app.route("/conversion", methods=["POST"])
+def conversion():
+    stats["conversions"] += 1
+    return jsonify({"status": "ok"})
 
 
 if __name__ == "__main__":
