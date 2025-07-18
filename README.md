@@ -22,4 +22,10 @@ python backend/app.py
 
 Chat history and settings are kept in the browser's local storage.
 
-To embed the assistant on any page, import `chat-widget.js` and call `mountChatWidget()`. This will mount a floating chat bubble with the full chat UI.
+To embed the assistant on any page, include the widget script served by the backend:
+
+```html
+<script src="https://your-server.com/widget/seep-widget.js" data-merchant-id="YOUR_ID"></script>
+```
+
+This script automatically fetches the configuration and displays a chat bubble that communicates with the `/chat` endpoint.
