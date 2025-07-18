@@ -28,7 +28,9 @@ export default function App() {
     fetch(`/bot/${botName}`)
       .then(res => res.json())
       .then(data => {
-        if (data.welcomeMessage) {
+        if (data.suggestion) {
+          setMessages([{ sender: 'bot', text: data.suggestion, time: new Date().toLocaleTimeString() }]);
+        } else if (data.welcomeMessage) {
           setMessages([{ sender: 'bot', text: data.welcomeMessage, time: new Date().toLocaleTimeString() }]);
         }
       });

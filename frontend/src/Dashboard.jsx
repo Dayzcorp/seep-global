@@ -7,6 +7,8 @@ export default function Dashboard() {
   const [showSetup, setShowSetup] = useState(!localStorage.getItem('configSet'));
   const [templates, setTemplates] = useState({ welcome: '', abandoned_cart: '', faq: '' });
   const [bestsellers, setBestsellers] = useState([]);
+  const [faqs, setFaqs] = useState([]);
+  const [newFaq, setNewFaq] = useState({ question: '', answer: '' });
 
   useEffect(() => {
     fetch('/usage')
@@ -19,6 +21,7 @@ export default function Dashboard() {
     fetch('/bestsellers')
       .then(res => res.json())
       .then(data => setBestsellers(data.products || []));
+    fetch('/faq').then(res => res.json()).then(data => setFaqs(data));
   }, []);
 
   const suggestions = [
@@ -42,6 +45,17 @@ export default function Dashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+  };
+
+  const addFaq = async () => {
+    if (!newFaq.question.trim() || !newFaq.answer.trim()) return;
+    await fetch('/faq', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newFaq),
+    });
+    setFaqs(f => [...f, newFaq]);
+    setNewFaq({ question: '', answer: '' });
   };
 
   if (error) {
@@ -101,6 +115,31 @@ export default function Dashboard() {
             <p className="stat-num">{display.plan}</p>
             <p className="stat-label">Plan</p>
           </div>
+        </div>
+      </section>
+
+      <section className="faqs">
+        <h2 className="section-title">FAQs</h2>
+        <div className="faq-list">
+          {faqs.map((f, i) => (
+            <div key={i} className="faq-item">
+              <p><strong>Q:</strong> {f.question}</p>
+              <p><strong>A:</strong> {f.answer}</p>
+            </div>
+          ))}
+        </div>
+        <div className="faq-add">
+          <input
+            placeholder="Question"
+            value={newFaq.question}
+            onChange={e => setNewFaq(n => ({ ...n, question: e.target.value }))}
+          />
+          <textarea
+            placeholder="Answer"
+            value={newFaq.answer}
+            onChange={e => setNewFaq(n => ({ ...n, answer: e.target.value }))}
+          />
+          <button onClick={addFaq}>Add FAQ</button>
         </div>
       </section>
 

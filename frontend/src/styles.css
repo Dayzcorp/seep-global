@@ -182,7 +182,8 @@ textarea {
 }
 
 .templates,
-.insights {
+.insights,
+.faqs {
   margin-bottom: 20px;
   background: #ffffff;
   padding: 20px;
@@ -224,6 +225,16 @@ textarea {
 .inventory {
   font-size: 0.9rem;
   color: #6b7280;
+}
+
+.faq-item {
+  margin-bottom: 10px;
+}
+
+.faq-add input,
+.faq-add textarea {
+  width: 100%;
+  margin-bottom: 5px;
 }
 
 @media (min-width: 600px) {
