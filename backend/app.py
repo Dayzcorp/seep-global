@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import openai
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
@@ -18,6 +19,9 @@ CORS(app)
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
 # In-memory store for configuration and extended stats
 config = {"welcome_message": "", "tone": "Friendly", "business_name": ""}
+templates = {"welcome": "", "abandoned_cart": "", "faq": ""}
+SHOPIFY_STOREFRONT_TOKEN = os.getenv("SHOPIFY_STOREFRONT_TOKEN")
+SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN")
 stats = {
     "unique_visitors": set(),
     "success": 0,
@@ -113,10 +117,58 @@ def config_route():
     return jsonify(config)
 
 
+@app.route("/templates", methods=["GET", "POST"])
+def templates_route():
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        templates["welcome"] = data.get("welcome", templates["welcome"])
+        templates["abandoned_cart"] = data.get("abandonedCart", templates["abandoned_cart"])
+        templates["faq"] = data.get("faq", templates["faq"])
+        return jsonify({"status": "ok"})
+    return jsonify(templates)
+
+
 @app.route("/conversion", methods=["POST"])
 def conversion():
     stats["conversions"] += 1
     return jsonify({"status": "ok"})
+
+
+@app.route("/bestsellers")
+def bestsellers():
+    if not (SHOPIFY_STOREFRONT_TOKEN and SHOPIFY_STORE_DOMAIN):
+        return jsonify({"products": []})
+    query = """
+    {\n      products(first:3, sortKey:BEST_SELLING){\n        edges{\n          node{\n            title\n            totalInventory\n            images(first:1){edges{node{url}}}\n          }\n        }\n      }\n    }
+    """
+    try:
+        resp = requests.post(
+            f"https://{SHOPIFY_STORE_DOMAIN}/api/2024-04/graphql.json",
+            json={"query": query},
+            headers={
+                "X-Shopify-Storefront-Access-Token": SHOPIFY_STOREFRONT_TOKEN,
+                "Content-Type": "application/json",
+            },
+            timeout=10,
+        )
+        data = resp.json()
+        products = []
+        for edge in data.get("data", {}).get("products", {}).get("edges", []):
+            node = edge.get("node", {})
+            image = None
+            imgs = node.get("images", {}).get("edges", [])
+            if imgs:
+                image = imgs[0].get("node", {}).get("url")
+            products.append(
+                {
+                    "title": node.get("title"),
+                    "inventory": node.get("totalInventory"),
+                    "image": image,
+                }
+            )
+        return jsonify({"products": products})
+    except Exception:
+        return jsonify({"products": []})
 
 
 if __name__ == "__main__":
