@@ -5,12 +5,20 @@ export default function Dashboard() {
   const [usage, setUsage] = useState(null);
   const [error, setError] = useState(null);
   const [showSetup, setShowSetup] = useState(!localStorage.getItem('configSet'));
+  const [templates, setTemplates] = useState({ welcome: '', abandoned_cart: '', faq: '' });
+  const [bestsellers, setBestsellers] = useState([]);
 
   useEffect(() => {
     fetch('/usage')
       .then(res => res.json())
       .then(data => setUsage(data))
       .catch(() => setError('Failed to load usage'));
+    fetch('/templates')
+      .then(res => res.json())
+      .then(data => setTemplates(data));
+    fetch('/bestsellers')
+      .then(res => res.json())
+      .then(data => setBestsellers(data.products || []));
   }, []);
 
   const suggestions = [
@@ -21,6 +29,19 @@ export default function Dashboard() {
 
   const clickSuggestion = async () => {
     await fetch('/conversion', { method: 'POST' });
+  };
+
+  const saveTemplates = async () => {
+    const payload = {
+      welcome: templates.welcome,
+      abandonedCart: templates.abandoned_cart,
+      faq: templates.faq,
+    };
+    await fetch('/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   };
 
   if (error) {
@@ -80,6 +101,48 @@ export default function Dashboard() {
             <p className="stat-num">{display.plan}</p>
             <p className="stat-label">Plan</p>
           </div>
+        </div>
+      </section>
+
+      <section className="templates">
+        <h2 className="section-title">Message Templates</h2>
+        <div className="template-item">
+          <label>
+            Welcome greeting
+            <textarea value={templates.welcome} onChange={e => setTemplates(t => ({ ...t, welcome: e.target.value }))} />
+          </label>
+          <p className="preview">Preview: {templates.welcome}</p>
+          <button onClick={saveTemplates}>Save</button>
+        </div>
+        <div className="template-item">
+          <label>
+            Abandoned cart follow-up
+            <textarea value={templates.abandoned_cart} onChange={e => setTemplates(t => ({ ...t, abandoned_cart: e.target.value }))} />
+          </label>
+          <p className="preview">Preview: {templates.abandoned_cart}</p>
+          <button onClick={saveTemplates}>Save</button>
+        </div>
+        <div className="template-item">
+          <label>
+            FAQ autoresponder
+            <textarea value={templates.faq} onChange={e => setTemplates(t => ({ ...t, faq: e.target.value }))} />
+          </label>
+          <p className="preview">Preview: {templates.faq}</p>
+          <button onClick={saveTemplates}>Save</button>
+        </div>
+      </section>
+
+      <section className="insights">
+        <h2 className="section-title">Product Insights</h2>
+        <div className="bestsellers">
+          {bestsellers.length === 0 && <p>No data available</p>}
+          {bestsellers.map((p, i) => (
+            <div key={i} className="card bestseller-card">
+              {p.image && <img src={p.image} alt={p.title} />}
+              <p>{p.title}</p>
+              <p className="inventory">Inventory: {p.inventory}</p>
+            </div>
+          ))}
         </div>
       </section>
 

@@ -181,6 +181,51 @@ textarea {
   gap: 10px;
 }
 
+.templates,
+.insights {
+  margin-bottom: 20px;
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.template-item {
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-item textarea {
+  width: 100%;
+  min-height: 60px;
+  margin-top: 4px;
+}
+
+.preview {
+  font-style: italic;
+  font-size: 0.9rem;
+  margin: 5px 0;
+}
+
+.bestsellers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.bestseller-card img {
+  max-width: 100px;
+  height: auto;
+  display: block;
+  margin: 0 auto 5px;
+}
+
+.inventory {
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
 @media (min-width: 600px) {
   .suggestions-list {
     flex-direction: row;
