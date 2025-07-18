@@ -169,6 +169,12 @@ textarea {
   font-weight: bold;
 }
 
+.card i {
+  font-size: 1.2rem;
+  margin-bottom: 5px;
+  color: #6366f1;
+}
+
 .suggestions-list {
   display: flex;
   flex-direction: column;
