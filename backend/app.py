@@ -4,6 +4,9 @@ from collections import defaultdict
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import openai
+from dotenv import load_dotenv
+
+load_dotenv()
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
@@ -15,8 +18,8 @@ CORS(app)
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
 
 
-def get_client(key: str | None = None):
-    return openai.OpenAI(api_key=key or API_KEY, base_url="https://openrouter.ai/api/v1")
+def get_client():
+    return openai.OpenAI(api_key=API_KEY, base_url="https://openrouter.ai/api/v1")
 
 
 @app.route("/chat", methods=["POST"])
@@ -26,14 +29,16 @@ def chat():
     if usage["tokens"] >= TOKEN_LIMIT:
         return jsonify({"error": "limit", "message": "You\u2019ve hit your free usage limit. Upgrade to continue."}), 402
 
+    if not API_KEY:
+        return jsonify({"error": "server_config", "message": "OpenRouter API key missing"}), 500
+
     data = request.get_json(force=True) or {}
     user_message = data.get("message", "")
-    api_key = request.headers.get("x-openrouter-key")
     usage["requests"] += 1
 
     def generate():
         try:
-            client = get_client(api_key)
+            client = get_client()
             response = client.chat.completions.create(
                 model=MODEL,
                 messages=[

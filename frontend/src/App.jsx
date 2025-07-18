@@ -60,7 +60,7 @@ export default function App() {
         });
       }
     } catch (err) {
-      setMessages(prev => [...prev.slice(0, -1), { sender: 'bot', text: 'Error contacting server', time: botPlaceholder.time }]);
+      setMessages(prev => [...prev.slice(0, -1), { sender: 'bot', text: 'Bot is unavailable. Check server/API key.', time: botPlaceholder.time }]);
     } finally {
       setLoading(false);
     }
@@ -76,13 +76,13 @@ export default function App() {
   return (
     <div className="container">
       <header>
-        <h1>{sessionStorage.getItem('botName') || 'SEEP'} Assistant</h1>
+        <h1>{localStorage.getItem('botName') || 'SEEP'} Assistant</h1>
         <button onClick={() => setShowSettings(true)}>Settings</button>
         <Link to="/dashboard"><button>Dashboard</button></Link>
       </header>
       <div className="chat">
         {messages.map((m, i) => <Message key={i} {...m} />)}
-        {loading && <div className="typing">{(sessionStorage.getItem('botName') || 'SEEP')} is typing...</div>}
+        {loading && <div className="typing">{(localStorage.getItem('botName') || 'SEEP')} is typing...</div>}
         <div ref={bottomRef} />
       </div>
       <div className="input">

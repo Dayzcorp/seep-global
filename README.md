@@ -19,4 +19,6 @@ python backend/app.py
 - `npm install` then `npm run dev` to start the dev server.
 - Proxy rules are defined in `frontend/vite.config.js` so API calls reach `localhost:5000`.
 
-Chat history and settings are kept in session storage.
+Chat history and settings are kept in the browser's local storage.
+
+To embed the assistant on any page, import `chat-widget.js` and call `mountChatWidget()`. This will mount a floating chat bubble with the full chat UI.
