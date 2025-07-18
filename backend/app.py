@@ -19,6 +19,11 @@ app = Flask(__name__)
 # Allow embedding from any domain
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+@app.route("/")
+def index():
+    """Simple health check for the API."""
+    return "<h1>SEEP Global API is Live</h1>"
+
 DB_PATH = os.path.join(os.path.dirname(__file__), 'bots.db')
 
 
