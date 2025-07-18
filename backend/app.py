@@ -2,6 +2,7 @@ import os
 import traceback
 from collections import defaultdict
 from flask import Flask, request, jsonify, Response, stream_with_context
+import sqlite3
 from flask_cors import CORS
 import openai
 from dotenv import load_dotenv
@@ -15,6 +16,41 @@ TOKEN_LIMIT = 2000
 
 app = Flask(__name__)
 CORS(app)
+
+DB_PATH = os.path.join(os.path.dirname(__file__), 'bots.db')
+
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS bots (name TEXT PRIMARY KEY, welcome_message TEXT)"
+    )
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+def get_welcome(bot_name: str) -> str:
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT welcome_message FROM bots WHERE name=?",
+        (bot_name,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else ""
+
+
+def save_welcome(bot_name: str, message: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO bots (name, welcome_message) VALUES (?, ?)"
+        " ON CONFLICT(name) DO UPDATE SET welcome_message=excluded.welcome_message",
+        (bot_name, message),
+    )
+    conn.commit()
+    conn.close()
 
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
 # In-memory store for configuration and extended stats
@@ -115,6 +151,16 @@ def config_route():
         config["business_name"] = data.get("businessName", config["business_name"])
         return jsonify({"status": "ok"})
     return jsonify(config)
+
+
+@app.route("/bot/<bot_name>", methods=["GET", "POST"])
+def bot_route(bot_name):
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        welcome = data.get("welcomeMessage", "")
+        save_welcome(bot_name, welcome)
+        return jsonify({"status": "ok"})
+    return jsonify({"welcomeMessage": get_welcome(bot_name)})
 
 
 @app.route("/templates", methods=["GET", "POST"])

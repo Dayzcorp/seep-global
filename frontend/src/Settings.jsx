@@ -1,12 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function Settings({ onClose }) {
   const [botName, setBotName] = useState(localStorage.getItem('botName') || 'SEEP');
   const [model, setModel] = useState(localStorage.getItem('model') || 'deepseek/deepseek-chat-v3-0324:free');
+  const [welcome, setWelcome] = useState('');
 
-  const save = () => {
+  useEffect(() => {
+    fetch(`/bot/${botName}`)
+      .then(res => res.json())
+      .then(data => setWelcome(data.welcomeMessage || ''));
+  }, [botName]);
+
+  const save = async () => {
     localStorage.setItem('botName', botName);
     localStorage.setItem('model', model);
+    await fetch(`/bot/${botName}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ welcomeMessage: welcome })
+    });
     onClose();
   };
 
@@ -17,6 +29,10 @@ export default function Settings({ onClose }) {
         <label>
           Bot name
           <input value={botName} onChange={e => setBotName(e.target.value)} />
+        </label>
+        <label>
+          Welcome message
+          <input value={welcome} onChange={e => setWelcome(e.target.value)} />
         </label>
         <label>
           Model
