@@ -7,6 +7,7 @@ from flask_cors import CORS
 import openai
 from dotenv import load_dotenv
 import requests
+import difflib
 
 load_dotenv()
 
@@ -24,6 +25,9 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS bots (name TEXT PRIMARY KEY, welcome_message TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS faqs (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT UNIQUE, answer TEXT)"
     )
     conn.commit()
     conn.close()
@@ -52,7 +56,30 @@ def save_welcome(bot_name: str, message: str):
     conn.commit()
     conn.close()
 
+
+def get_faqs():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("SELECT id, question, answer FROM faqs")
+    rows = cur.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "question": r[1], "answer": r[2]}
+        for r in rows
+    ]
+
+
+def add_faq(question: str, answer: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT OR REPLACE INTO faqs (question, answer) VALUES (?, ?)",
+        (question, answer),
+    )
+    conn.commit()
+    conn.close()
+
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
+# Track sessions that mentioned the cart but didn't checkout
+abandoned_cart_flags = defaultdict(bool)
 # In-memory store for configuration and extended stats
 config = {"welcome_message": "", "tone": "Friendly", "business_name": ""}
 templates = {"welcome": "", "abandoned_cart": "", "faq": ""}
@@ -86,6 +113,23 @@ def chat():
     data = request.get_json(force=True) or {}
     user_message = data.get("message", "")
     usage["requests"] += 1
+
+    # If the user mentions cart/checkout keywords, flag session
+    lower = user_message.lower()
+    keywords = ["cart", "checkout", "left item", "left in cart", "forgot"]
+    if any(k in lower for k in keywords):
+        abandoned_cart_flags[session_id] = True
+
+    # Check stored FAQs before calling the LLM
+    for faq in get_faqs():
+        ratio = difflib.SequenceMatcher(None, lower, faq["question"].lower()).ratio()
+        if ratio > 0.6:
+            def gen():
+                usage["tokens"] += len(faq["answer"].split())
+                stats["success"] += 1
+                yield faq["answer"]
+
+            return Response(stream_with_context(gen()), mimetype="text/plain")
 
     def generate():
         success = True
@@ -160,7 +204,12 @@ def bot_route(bot_name):
         welcome = data.get("welcomeMessage", "")
         save_welcome(bot_name, welcome)
         return jsonify({"status": "ok"})
-    return jsonify({"welcomeMessage": get_welcome(bot_name)})
+    session_id = request.remote_addr
+    suggestion = None
+    if abandoned_cart_flags.get(session_id):
+        suggestion = templates["abandoned_cart"] or "Did you forget something in your cart?"
+        abandoned_cart_flags.pop(session_id)
+    return jsonify({"welcomeMessage": get_welcome(bot_name), "suggestion": suggestion})
 
 
 @app.route("/templates", methods=["GET", "POST"])
@@ -174,9 +223,29 @@ def templates_route():
     return jsonify(templates)
 
 
+@app.route("/faq", methods=["GET", "POST"])
+def faq_route():
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        q = data.get("question", "").strip()
+        a = data.get("answer", "").strip()
+        if q and a:
+            add_faq(q, a)
+        return jsonify({"status": "ok"})
+    return jsonify(get_faqs())
+
+
 @app.route("/conversion", methods=["POST"])
 def conversion():
     stats["conversions"] += 1
+    return jsonify({"status": "ok"})
+
+
+@app.route("/checkout", methods=["POST"])
+def checkout():
+    session_id = request.remote_addr
+    if session_id in abandoned_cart_flags:
+        abandoned_cart_flags.pop(session_id)
     return jsonify({"status": "ok"})
 
 
