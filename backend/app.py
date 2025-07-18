@@ -29,9 +29,6 @@ def init_db():
     conn.execute(
         "CREATE TABLE IF NOT EXISTS faqs (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT UNIQUE, answer TEXT)"
     )
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS usage (user TEXT, month TEXT, tokens INTEGER DEFAULT 0, plan TEXT DEFAULT 'Free', PRIMARY KEY(user, month))"
-    )
     conn.commit()
     conn.close()
 
@@ -81,40 +78,16 @@ def add_faq(question: str, answer: str):
     conn.close()
 
 
-def get_user_usage_record(user: str):
-    month = datetime.utcnow().strftime("%Y-%m")
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.execute(
-        "SELECT tokens, plan, month FROM usage WHERE user=? AND month=?",
-        (user, month),
-    )
-    row = cur.fetchone()
-    if not row:
-        conn.execute(
-            "INSERT OR REPLACE INTO usage (user, month, tokens, plan) VALUES (?, ?, 0, 'Free')",
-            (user, month),
-        )
-        conn.commit()
-        conn.close()
-        return {"tokens": 0, "plan": "Free"}
-    conn.close()
-    return {"tokens": row[0], "plan": row[1]}
 
-
-def add_user_tokens(user: str, amount: int):
-    month = datetime.utcnow().strftime("%Y-%m")
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        "INSERT INTO usage (user, month, tokens, plan) VALUES (?, ?, ?, 'Free')"
-        " ON CONFLICT(user, month) DO UPDATE SET tokens=tokens + excluded.tokens",
-        (user, month, amount),
-    )
-    conn.commit()
-    conn.close()
-
+# Track session level stats
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
 # Track sessions that mentioned the cart but didn't checkout
 abandoned_cart_flags = defaultdict(bool)
+# Per merchant monthly usage
+def current_month():
+    return datetime.utcnow().strftime("%Y-%m")
+
+merchant_usage = defaultdict(lambda: {"tokens": 0, "plan": "free", "month": current_month()})
 # In-memory store for configuration and extended stats
 config = {"welcome_message": "", "tone": "Friendly", "business_name": ""}
 templates = {"welcome": "", "abandoned_cart": "", "faq": ""}
@@ -134,14 +107,25 @@ def get_client():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    session_id = request.remote_addr
-    usage = session_usage[session_id]
-    stats["unique_visitors"].add(session_id)
-    user_record = get_user_usage_record(session_id)
-    limit = 5000 if user_record["plan"] == "Premium" else 500
-    if user_record["tokens"] >= limit:
+    merchant_id = request.headers.get("x-merchant-id")
+    if not merchant_id:
+        return jsonify({"error": "merchant_id", "message": "x-merchant-id header required"}), 400
+
+    usage = merchant_usage[merchant_id]
+    if usage["month"] != current_month():
+        usage["tokens"] = 0
+        usage["month"] = current_month()
+
+    plan = usage.get("plan", "free").lower()
+    limits = {"free": 2000, "starter": 8000, "pro": float("inf")}
+    limit = limits.get(plan, float("inf"))
+    if usage["tokens"] >= limit:
         stats["failure"] += 1
-        return jsonify({"error": "limit", "message": "You\u2019ve hit your plan usage limit."}), 402
+        return jsonify({"error": "limit", "message": "Token limit exceeded"}), 402
+
+    session_id = request.remote_addr
+    sess = session_usage[session_id]
+    stats["unique_visitors"].add(session_id)
 
     if not API_KEY:
         stats["failure"] += 1
@@ -149,7 +133,7 @@ def chat():
 
     data = request.get_json(force=True) or {}
     user_message = data.get("message", "")
-    usage["requests"] += 1
+    sess["requests"] += 1
 
     # If the user mentions cart/checkout keywords, flag session
     lower = user_message.lower()
@@ -162,7 +146,8 @@ def chat():
         ratio = difflib.SequenceMatcher(None, lower, faq["question"].lower()).ratio()
         if ratio > 0.6:
             def gen():
-                usage["tokens"] += len(faq["answer"].split())
+                sess["tokens"] += len(faq["answer"].split())
+                merchant_usage[merchant_id]["tokens"] += len(faq["answer"].split())
                 stats["success"] += 1
                 yield faq["answer"]
 
@@ -186,8 +171,8 @@ def chat():
                 full += token
                 yield token
             token_count = len(full.split())
-            usage["tokens"] += token_count
-            add_user_tokens(session_id, token_count)
+            sess["tokens"] += token_count
+            merchant_usage[merchant_id]["tokens"] += token_count
         except openai.AuthenticationError:
             success = False
             yield "[Invalid API key]"
@@ -214,9 +199,18 @@ def usage_stats():
     monthly_messages = sum(u["tokens"] for u in usage_values)
     avg_messages = monthly_messages / max(total_chats, 1)
     success_rate = stats["success"] / max(stats["success"] + stats["failure"], 1)
-    user_id = request.remote_addr
-    record = get_user_usage_record(user_id)
-    limit = 5000 if record["plan"] == "Premium" else 500
+
+    limits = {"free": 2000, "starter": 8000, "pro": float("inf")}
+    merchants = {}
+    for mid, data in merchant_usage.items():
+        limit = limits.get(data["plan"].lower(), float("inf"))
+        merchants[mid] = {
+            "plan": data["plan"],
+            "tokensUsed": data["tokens"],
+            "tokenLimit": None if limit == float("inf") else limit,
+            "month": data["month"],
+        }
+
     return jsonify({
         "totalChats": total_chats,
         "monthlyMessages": monthly_messages,
@@ -224,9 +218,7 @@ def usage_stats():
         "uniqueVisitors": len(stats["unique_visitors"]),
         "successRate": success_rate,
         "conversions": stats["conversions"],
-        "plan": record["plan"],
-        "tokensUsed": record["tokens"],
-        "tokenLimit": limit,
+        "merchants": merchants,
     })
 
 
