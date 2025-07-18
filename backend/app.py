@@ -91,6 +91,16 @@ def current_month():
 merchant_usage = defaultdict(lambda: {"tokens": 0, "plan": "free", "month": current_month()})
 # In-memory store for configuration and extended stats
 config = {"welcome_message": "", "tone": "Friendly", "business_name": ""}
+# Basic per-merchant links used by the embeddable widget. In a real
+# deployment these would likely come from a database, but for this demo
+# we simply provide defaults for the "test-merchant" ID.
+merchant_configs = {
+    "test-merchant": {
+        "trackLink": "https://store.com/track",
+        "returnsLink": "https://store.com/returns",
+        "supportLink": "https://store.com/support",
+    }
+}
 templates = {"welcome": "", "abandoned_cart": "", "faq": ""}
 SHOPIFY_STOREFRONT_TOKEN = os.getenv("SHOPIFY_STOREFRONT_TOKEN")
 SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN")
@@ -326,7 +336,10 @@ def bestsellers():
 @app.route("/merchant/config/<merchant_id>")
 def merchant_config(merchant_id: str):
     """Return basic configuration for a merchant."""
-    return jsonify({"welcomeMessage": get_welcome(merchant_id)})
+    links = merchant_configs.get(merchant_id, merchant_configs.get("test-merchant", {}))
+    cfg = {"welcomeMessage": get_welcome(merchant_id)}
+    cfg.update(links)
+    return jsonify(cfg)
 
 
 @app.route("/widget/seep-widget.js")
