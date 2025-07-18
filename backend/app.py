@@ -16,7 +16,8 @@ API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 app = Flask(__name__)
-CORS(app)
+# Allow embedding from any domain
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'bots.db')
 
@@ -320,6 +321,25 @@ def bestsellers():
         return jsonify({"products": products})
     except Exception:
         return jsonify({"products": []})
+
+
+@app.route("/widget/seep-widget.js")
+def widget_script():
+    """Serve the embeddable chat widget script."""
+    script = (
+        "(function(){var s=document.currentScript,d=new URL(s.src),h=d.origin,"
+        "b=document.createElement('div'),i=document.createElement('iframe');"
+        "Object.assign(b.style,{position:'fixed',bottom:'20px',right:'20px',"
+        "width:'60px',height:'60px',borderRadius:'30px',background:'#3b82f6',"
+        "color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',"
+        "cursor:'pointer',boxShadow:'0 2px 6px rgba(0,0,0,.3)',zIndex:99999});"
+        "b.innerHTML='Chat';Object.assign(i.style,{position:'fixed',bottom:'90px',"
+        "right:'20px',width:'350px',height:'500px',borderRadius:'8px',border:'none',"
+        "boxShadow:'0 2px 8px rgba(0,0,0,.2)',display:'none',zIndex:99999});"
+        "i.src=h+'/chat?merchant_id=test-merchant';b.onclick=function(){i.style.display=i.style.display==='none'?'block':'none'};"
+        "document.body.appendChild(i);document.body.appendChild(b);})();"
+    )
+    return Response(script, mimetype="application/javascript")
 
 
 if __name__ == "__main__":
