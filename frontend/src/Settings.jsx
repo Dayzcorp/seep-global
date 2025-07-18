@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 
 export default function Settings({ onClose }) {
-  const [botName, setBotName] = useState(sessionStorage.getItem('botName') || 'SEEP');
+  const [botName, setBotName] = useState(localStorage.getItem('botName') || 'SEEP');
+  const [model, setModel] = useState(localStorage.getItem('model') || 'deepseek/deepseek-chat-v3-0324:free');
 
   const save = () => {
-    sessionStorage.setItem('botName', botName);
+    localStorage.setItem('botName', botName);
+    localStorage.setItem('model', model);
     onClose();
   };
 
@@ -18,7 +20,7 @@ export default function Settings({ onClose }) {
         </label>
         <label>
           Model
-          <select disabled>
+          <select value={model} onChange={e => setModel(e.target.value)}>
             <option value="deepseek/deepseek-chat-v3-0324:free">deepseek/deepseek-chat-v3-0324:free</option>
           </select>
         </label>
