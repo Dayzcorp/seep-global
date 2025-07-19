@@ -32,7 +32,7 @@
   function showButtons(arr){if(!arr||!arr.length)return;var d=document.createElement('div');d.className='seep-msg bot';arr.forEach(function(b){d.appendChild(btn(b.text,b.url));});m.appendChild(d);m.scrollTop=m.scrollHeight;}
   function quickBtn(text){var b=document.createElement('button');b.className='seep-reply';b.textContent=text;b.onclick=function(){ta.value=text;send();};return b;}
   function showQuickReplies(arr){if(!arr||!arr.length)return;var d=document.createElement('div');d.id='seep-quick';arr.forEach(function(t){d.appendChild(quickBtn(t));});m.appendChild(d);m.scrollTop=m.scrollHeight;}
-  function showTyping(){if(typing)return;typing=document.createElement('div');typing.id='seep-typing';typing.innerHTML='<span></span><span></span><span></span>';m.appendChild(typing);m.scrollTop=m.scrollHeight;}
+  function showTyping(){if(typing)return;typing=document.createElement('div');typing.className='seep-msg bot typing';typing.innerHTML='<span></span><span></span><span></span>';m.appendChild(typing);m.scrollTop=m.scrollHeight;}
   function hideTyping(){if(typing){typing.remove();typing=null;}}
 
   function handleBot(text){
@@ -66,8 +66,8 @@
       +'.seep-btn{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;background:'+color+';color:#fff;border-radius:4px;text-decoration:none;cursor:pointer}'
       +'.seep-btn:hover{opacity:.8}'
       +'#seep-hint{font-size:12px;color:#666;padding:4px;display:none}'
-      +'#seep-typing{margin:4px 0;display:flex;gap:2px}'
-      +'#seep-typing span{width:6px;height:6px;background:#bbb;border-radius:50%;animation:typing 1s infinite}'
+      +'.seep-msg.typing{display:flex;gap:4px}'
+      +'.seep-msg.typing span{width:6px;height:6px;background:#bbb;border-radius:50%;animation:typing 1s infinite}'
       +'#seep-quick{display:flex;flex-wrap:wrap;margin:4px 0}'
       +'.seep-reply{border:none;background:#eee;border-radius:12px;padding:4px 8px;margin:2px;font-size:12px;cursor:pointer}'
       +'@keyframes typing{0%{transform:translateY(0)}50%{transform:translateY(-4px)}100%{transform:translateY(0)}}'
