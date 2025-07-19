@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import ChatApp from './ChatApp';
 
 export default function mountChatWidget(options = {}) {
   const targetId = options.targetId || 'seep-chat-widget';
@@ -10,5 +10,5 @@ export default function mountChatWidget(options = {}) {
     container.id = targetId;
     document.body.appendChild(container);
   }
-  ReactDOM.createRoot(container).render(<App />);
+  ReactDOM.createRoot(container).render(<ChatApp />);
 }
