@@ -362,6 +362,21 @@ def analytics():
     return jsonify({"status": "ok"})
 
 
+@app.route("/log", methods=["GET", "POST"])
+def log_event():
+    """Simple event logger used by the widget."""
+    event = request.args.get("event")
+    if not event:
+        return jsonify({"error": "event required"}), 400
+    analytics_events[event].append(
+        {
+            "timestamp": datetime.utcnow().isoformat(),
+            "ip": request.remote_addr,
+        }
+    )
+    return jsonify({"status": "ok"})
+
+
 @app.route("/merchant/config/<merchant_id>")
 def merchant_config(merchant_id: str):
     """Return basic configuration for a merchant."""
@@ -378,6 +393,16 @@ def widget_script():
         os.path.join(os.path.dirname(__file__), "static"),
         "seep-widget.js",
         mimetype="application/javascript",
+    )
+
+
+@app.route("/widget/seep-style.css")
+def widget_style():
+    """Serve the embeddable chat widget stylesheet."""
+    return send_from_directory(
+        os.path.join(os.path.dirname(__file__), "static"),
+        "seep-style.css",
+        mimetype="text/css",
     )
 
 

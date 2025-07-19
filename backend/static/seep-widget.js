@@ -5,8 +5,13 @@
   var lang = navigator.language || navigator.userLanguage;
   try { localStorage.setItem('seep-lang', lang); } catch(e) {}
 
-  function css(str){var e=document.createElement('style');e.textContent=str;document.head.appendChild(e);}
+  var link=document.createElement('link');
+  link.rel='stylesheet';
+  link.href=host+'/widget/seep-style.css';
+  document.head.appendChild(link);
+
   function btn(text,url){var a=document.createElement('a');a.textContent=text;a.href=url;a.target='_blank';a.className='seep-btn';return a;}
+  function logEvent(ev,method){var u=host+'/log?event='+encodeURIComponent(ev);try{fetch(u,{method:method||'GET'});}catch(e){}}
   function track(ev,details){
     try{fetch(host+'/analytics',{method:'POST',headers:{"Content-Type":"application/json"},body:JSON.stringify({merchantId:mid,event:ev,details:details})});}catch(e){}
   }
@@ -42,8 +47,8 @@
     var obj;try{obj=JSON.parse(text);}catch(e){}
     if(obj&&obj.text){text=obj.text;botDiv.innerHTML=linkify(stripMd(text));showButtons(obj.buttons);}else{botDiv.innerHTML=linkify(stripMd(text));}
     var lc=text.toLowerCase();var extra=[];
-    if(/go to cart/.test(lc)) extra.push({text:config.cartLabel||'\ud83d\uded2 View Cart',url:'/cart'});
-    if(/checkout/.test(lc)) extra.push({text:config.checkoutLabel||'\ud83d\udcb3 Checkout',url:'/checkout'});
+    if(/go to cart/.test(lc) && config.cartUrl) extra.push({text:config.cartLabel||'\ud83d\uded2 View Cart',url:config.cartUrl});
+    if(/checkout/.test(lc) && config.checkoutUrl) extra.push({text:config.checkoutLabel||'\ud83d\udcb3 Checkout',url:config.checkoutUrl});
     if(extra.length) showButtons(extra);
     if(/don't understand|not sure|sorry/i.test(text)) unhelp++; else unhelp=0;
     if(unhelp>=3 && config.supportLink){
@@ -56,35 +61,14 @@
   function init(c){
     config=c||{};
     var color=config.color||'#3b82f6';
-      css('#seep-bubble{position:fixed;bottom:20px;right:20px;width:60px;height:60px;border-radius:30px;background:'+color+';color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3);z-index:2147483647}'
-        +'#seep-container{position:fixed;bottom:90px;right:20px;width:320px;max-width:95vw;height:450px;max-height:70vh;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.2);display:none;flex-direction:column;overflow:hidden;z-index:2147483647}'
-        +'@media(max-width:600px){#seep-container{width:80vw;right:10vw}}'
-        +'#seep-header{background:'+color+';color:#fff;padding:10px;font-size:16px}'
-        +'#seep-messages{flex:1;overflow-y:auto;padding:10px;font-size:14px;background:#fafafa;display:flex;flex-direction:column}'
-        +'#seep-input{display:flex;border-top:1px solid #eee;padding:4px;box-sizing:border-box}'
-        +'#seep-input textarea{flex:1;padding:8px;border:none;resize:none;font-size:14px}'
-        +'#seep-input button{background:'+color+';color:#fff;border:none;padding:0 12px;cursor:pointer}'
-        +'#seep-actions{display:flex;gap:8px;padding:8px;border-top:1px solid #eee;justify-content:space-around}'
-        +'#seep-actions a{flex:1;text-align:center}'
-        +'.seep-msg{margin-bottom:8px;padding:8px 12px;border-radius:16px;max-width:80%;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,.1);opacity:0;animation:fade-in .3s forwards}'
-        +'.seep-msg.bot{align-self:flex-start;background:#f5f7fb;color:#111}'
-        +'.seep-msg.user{align-self:flex-end;background:'+color+';color:#fff}'
-      +'.seep-btn{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;background:'+color+';color:#fff;border-radius:4px;text-decoration:none;cursor:pointer}'
-      +'.seep-btn:hover{opacity:.8}'
-      +'#seep-hint{font-size:12px;color:#666;padding:4px;display:none}'
-      +'.seep-msg.typing{display:flex;gap:4px}'
-      +'.seep-msg.typing span{width:6px;height:6px;background:#bbb;border-radius:50%;animation:typing 1s infinite}'
-      +'#seep-quick{display:flex;flex-wrap:wrap;margin:4px 0}'
-      +'.seep-reply{border:none;background:#eee;border-radius:12px;padding:4px 8px;margin:2px;font-size:12px;cursor:pointer}'
-      +'@keyframes typing{0%{transform:translateY(0)}50%{transform:translateY(-4px)}100%{transform:translateY(0)}}'
-      +'@keyframes fade-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}');
+    document.documentElement.style.setProperty('--seep-color', color);
     var b=document.createElement('div');b.id='seep-bubble';b.innerHTML='Chat';
     var f=document.createElement('div');f.id='seep-container';
     f.innerHTML='<div id="seep-header">Chat</div><div id="seep-messages"></div><div id="seep-input"><textarea rows="1"></textarea><button>Send</button></div><div id="seep-hint">Try asking about shipping, returns, or order status.</div><div id="seep-actions"></div>';
     b.onclick=function(){
       var open=f.style.display!=='flex';
       f.style.display=open?'flex':'none';
-      if(open) track('widget_opened');
+      if(open){track('widget_opened');logEvent('open');}
     };
     document.body.appendChild(b);document.body.appendChild(f);
     m=f.querySelector('#seep-messages');ta=f.querySelector('textarea');var btnEl=f.querySelector('button');hint=f.querySelector('#seep-hint');var actions=f.querySelector('#seep-actions');
@@ -93,7 +77,7 @@
     if(c.contactUrl){var ct=btn('\ud83d\udcac Contact Us',c.contactUrl);ct.onclick=function(){track('button_clicked','contact');};actions.appendChild(ct);} 
     var greet=timeGreeting();var g=c.greeting||c.welcomeMessage;addMsg(greet+(g?'! '+g:'!'),'bot');
     if(Array.isArray(c.quickReplies)) showQuickReplies(c.quickReplies);
-    send=function(){var text=ta.value.trim();if(!text)return;track('message_sent');addMsg(text,'user');m.scrollTop=m.scrollHeight;ta.value='';if(handleCommand(text)) return;pending=smartLinks(text);showTyping();
+    send=function(){var text=ta.value.trim();if(!text)return;track('message_sent');logEvent('message','POST');addMsg(text,'user');m.scrollTop=m.scrollHeight;ta.value='';if(handleCommand(text)) return;pending=smartLinks(text);showTyping();
         fetch(host+'/chat',{method:'POST',headers:{"Content-Type":"application/json","x-merchant-id":mid},body:JSON.stringify({message:text})}).then(function(r){if(!r.ok)throw new Error();return r.body.getReader();}).then(function(reader){var dec=new TextDecoder();var bot='';botDiv=null;function read(){reader.read().then(function(res){if(res.done){hideTyping();track('response_received');if(botDiv)handleBot(bot);return;}hideTyping();bot+=dec.decode(res.value,{stream:true});if(botDiv)botDiv.innerHTML=linkify(stripMd(bot));else{botDiv=addMsg(bot,'bot');}m.scrollTop=m.scrollHeight;read();});}read();}).catch(function(){hideTyping();addMsg('Error','bot');});}
     btnEl.onclick=send;
     ta.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
