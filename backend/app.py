@@ -86,6 +86,7 @@ def add_faq(question: str, answer: str):
 
 
 # Track session level stats
+# Track session level stats
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
 # Track sessions that mentioned the cart but didn't checkout
 abandoned_cart_flags = defaultdict(bool)
@@ -93,7 +94,12 @@ abandoned_cart_flags = defaultdict(bool)
 def current_month():
     return datetime.utcnow().strftime("%Y-%m")
 
-merchant_usage = defaultdict(lambda: {"tokens": 0, "plan": "free", "month": current_month()})
+# Track usage per merchant
+merchant_usage = defaultdict(
+    lambda: {"tokens": 0, "plan": "free", "month": current_month(), "requests": 0}
+)
+# Store chat logs per merchant
+merchant_logs = defaultdict(list)
 # In-memory store for configuration and extended stats
 config = {"welcome_message": "", "tone": "Friendly", "business_name": ""}
 # Basic per-merchant links used by the embeddable widget. In a real
@@ -167,16 +173,24 @@ def chat():
     for faq in get_faqs():
         ratio = difflib.SequenceMatcher(None, lower, faq["question"].lower()).ratio()
         if ratio > 0.6:
-            def gen():
-                sess["tokens"] += len(faq["answer"].split())
-                merchant_usage[merchant_id]["tokens"] += len(faq["answer"].split())
-                stats["success"] += 1
-                yield faq["answer"]
-
-            return Response(stream_with_context(gen()), mimetype="text/plain")
+            token_count = len(faq["answer"].split())
+            sess["tokens"] += token_count
+            merchant_usage[merchant_id]["tokens"] += token_count
+            merchant_usage[merchant_id]["requests"] += 1
+            stats["success"] += 1
+            merchant_logs[merchant_id].append(
+                {
+                    "session": session_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "user": user_message,
+                    "assistant": faq["answer"],
+                }
+            )
+            return Response(faq["answer"], mimetype="text/plain")
 
     def generate():
         success = True
+        full = ""
         try:
             client = get_client()
             response = client.chat.completions.create(
@@ -187,7 +201,6 @@ def chat():
                 ],
                 stream=True,
             )
-            full = ""
             for chunk in response:
                 token = chunk.choices[0].delta.content or ""
                 full += token
@@ -206,6 +219,15 @@ def chat():
             traceback.print_exc()
             yield "[Error fetching response]"
         finally:
+            merchant_usage[merchant_id]["requests"] += 1
+            merchant_logs[merchant_id].append(
+                {
+                    "session": session_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "user": user_message,
+                    "assistant": full,
+                }
+            )
             if success:
                 stats["success"] += 1
             else:
@@ -375,6 +397,40 @@ def log_event():
         }
     )
     return jsonify({"status": "ok"})
+
+
+@app.route("/merchant/<merchant_id>/usage")
+def merchant_usage_route(merchant_id: str):
+    """Return usage stats for a single merchant."""
+    data = merchant_usage.get(merchant_id)
+    if not data:
+        return jsonify({"error": "merchant not found"}), 404
+    reqs = data.get("requests", 0)
+    tokens = data.get("tokens", 0)
+    avg = tokens / max(reqs, 1)
+    return jsonify({"requests": reqs, "tokens": tokens, "avgTokens": avg})
+
+
+@app.route("/merchant/<merchant_id>/logs")
+def merchant_logs_route(merchant_id: str):
+    """Return chat logs for a merchant."""
+    return jsonify({"logs": merchant_logs.get(merchant_id, [])})
+
+
+@app.route("/merchant/<merchant_id>/suggestions")
+def merchant_suggestions(merchant_id: str):
+    """Return AI-powered suggestions (dummy for now)."""
+    tips = [
+        "Respond quickly to customer questions.",
+        "Personalize messages with customer details.",
+    ]
+    return jsonify({"tips": tips})
+
+
+@app.route("/merchant/dashboard")
+def merchant_dashboard():
+    """Serve the merchant dashboard HTML."""
+    return render_template("dashboard.html")
 
 
 @app.route("/merchant/config/<merchant_id>")
