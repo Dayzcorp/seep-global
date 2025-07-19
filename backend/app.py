@@ -104,8 +104,14 @@ merchant_configs = {
         "trackLink": "https://store.com/track",
         "returnsLink": "https://store.com/returns",
         "supportLink": "https://store.com/support",
+        "cartUrl": "https://store.com/cart",
+        "checkoutUrl": "https://store.com/checkout",
+        "contactUrl": "mailto:support@store.com",
     }
 }
+
+# In-memory analytics store
+analytics_events = defaultdict(list)
 templates = {"welcome": "", "abandoned_cart": "", "faq": ""}
 SHOPIFY_STOREFRONT_TOKEN = os.getenv("SHOPIFY_STOREFRONT_TOKEN")
 SHOPIFY_STORE_DOMAIN = os.getenv("SHOPIFY_STORE_DOMAIN")
@@ -305,6 +311,7 @@ def checkout():
 def bestsellers():
     if not (SHOPIFY_STOREFRONT_TOKEN and SHOPIFY_STORE_DOMAIN):
         return jsonify({"products": []})
+
     query = """
     {\n      products(first:3, sortKey:BEST_SELLING){\n        edges{\n          node{\n            title\n            totalInventory\n            images(first:1){edges{node{url}}}\n          }\n        }\n      }\n    }
     """
@@ -336,6 +343,23 @@ def bestsellers():
         return jsonify({"products": products})
     except Exception:
         return jsonify({"products": []})
+
+
+@app.route("/analytics", methods=["POST"])
+def analytics():
+    data = request.get_json(force=True) or {}
+    merchant_id = data.get("merchantId")
+    event = data.get("event")
+    if not merchant_id or not event:
+        return jsonify({"error": "invalid"}), 400
+    analytics_events[merchant_id].append(
+        {
+            "timestamp": datetime.utcnow().isoformat(),
+            "type": event,
+            "details": data.get("details"),
+        }
+    )
+    return jsonify({"status": "ok"})
 
 
 @app.route("/merchant/config/<merchant_id>")
