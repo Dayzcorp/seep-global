@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Settings from './Settings';
-import { Link } from 'react-router-dom';
 
 function Message({ sender, text, time }) {
   return (
@@ -92,7 +91,6 @@ export default function ChatApp() {
       <header>
         <h1>{botName} Assistant</h1>
         <button onClick={() => setShowSettings(true)}>Settings</button>
-        <Link to="/dashboard"><button>Dashboard</button></Link>
       </header>
       <div className="chat">
         {messages.map((m, i) => <Message key={i} {...m} />)}

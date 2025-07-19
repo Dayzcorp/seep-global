@@ -7,6 +7,38 @@ body {
   justify-content: center;
   align-items: flex-start;
   min-height: 100vh;
+  padding-top: 60px; /* space for fixed navbar */
+}
+
+/* Navigation Bar */
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  z-index: 50;
+}
+
+.nav-links {
+  display: flex;
+  gap: 1rem;
+}
+
+.nav-link {
+  color: #4b5563;
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  font-weight: 500;
+}
+
+.nav-link.active {
+  font-weight: 700;
+  border-bottom: 2px solid #6366f1;
 }
 .container {
   width: 100%;
@@ -14,7 +46,7 @@ body {
   margin: 20px;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 40px);
+  height: calc(100vh - 40px - 60px);
   background: #ffffff;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
