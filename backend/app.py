@@ -1,7 +1,7 @@
 import os
 import traceback
 from collections import defaultdict
-from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
+from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory, render_template
 import sqlite3
 from flask_cors import CORS
 import openai
@@ -384,6 +384,28 @@ def merchant_config(merchant_id: str):
     cfg = {"welcomeMessage": get_welcome(merchant_id)}
     cfg.update(links)
     return jsonify(cfg)
+
+
+@app.route("/merchant/config", methods=["POST"])
+def merchant_config_save():
+    """Save merchant configuration from the onboarding form."""
+    data = request.get_json(force=True) or {}
+    merchant_id = data.get("merchantId")
+    if not merchant_id:
+        return jsonify({"error": "merchantId required"}), 400
+    merchant_configs[merchant_id] = {
+        "cartUrl": data.get("cartUrl", ""),
+        "checkoutUrl": data.get("checkoutUrl", ""),
+        "contactUrl": data.get("contactUrl", ""),
+    }
+    save_welcome(merchant_id, data.get("welcomeGreeting", ""))
+    return jsonify({"status": "ok"})
+
+
+@app.route("/setup-widget")
+def setup_widget():
+    """Render merchant onboarding form."""
+    return render_template("setup_widget.html")
 
 
 @app.route("/widget/seep-widget.js")

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup Widget</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;padding:20px;}
+    form{max-width:400px;width:100%;}
+    label{font-weight:bold;display:block;margin-top:12px;}
+    input{width:100%;padding:8px;margin-top:4px;box-sizing:border-box;}
+    button{margin-top:20px;padding:10px;background:#3b82f6;color:#fff;border:none;width:100%;cursor:pointer;border-radius:4px;}
+    #success{margin-top:20px;padding:10px;background:#e6ffed;border:1px solid #b2f5bf;display:none;word-break:break-all;}
+  </style>
+</head>
+<body>
+  <form id="setup-form">
+    <label>Merchant ID<input type="text" name="merchantId" required></label>
+    <label>Welcome Greeting<input type="text" name="welcomeGreeting" required></label>
+    <label>Cart URL<input type="url" name="cartUrl" required></label>
+    <label>Checkout URL<input type="url" name="checkoutUrl" required></label>
+    <label>Contact URL<input type="url" name="contactUrl" required></label>
+    <button type="submit">Save</button>
+    <div id="success"></div>
+  </form>
+<script>
+  document.getElementById('setup-form').addEventListener('submit', async function(e){
+    e.preventDefault();
+    const fd = new FormData(this);
+    const data = Object.fromEntries(fd.entries());
+    const res = await fetch('/merchant/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    if(res.ok){
+      const code = `<script src=\"https://seep-global.onrender.com/widget/seep-widget.js\" data-merchant-id=\"${data.merchantId}\"><\/script>`;
+      const box = document.getElementById('success');
+      box.textContent = code;
+      box.style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>
