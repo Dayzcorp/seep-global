@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
   const [merchantId, setMerchantId] = useState('demo');
@@ -45,9 +44,6 @@ export default function Dashboard() {
     <div className="p-4 max-w-3xl mx-auto space-y-6">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Merchant Dashboard</h1>
-        <Link to="/">
-          <button className="bg-indigo-600 text-white px-3 py-1 rounded">Back to Chat</button>
-        </Link>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
