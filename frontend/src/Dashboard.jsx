@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 const API_BASE = 'http://localhost:5000';
 
 export default function Dashboard() {
-  const [merchantId, setMerchantId] = useState('demo');
+  const [merchantId, setMerchantId] = useState('');
   const [usage, setUsage] = useState(null);
   const [logs, setLogs] = useState([]);
   const [tips, setTips] = useState([]);
@@ -16,9 +16,9 @@ export default function Dashboard() {
     setError('');
     try {
       const [uRes, lRes, sRes] = await Promise.all([
-        fetch(`${API_BASE}/merchant/${merchantId}/usage`),
-        fetch(`${API_BASE}/merchant/${merchantId}/logs`),
-        fetch(`${API_BASE}/merchant/${merchantId}/suggestions`)
+        fetch(`${API_BASE}/merchant/usage`),
+        fetch(`${API_BASE}/merchant/logs`),
+        fetch(`${API_BASE}/merchant/suggestions`)
       ]);
 
       if (!uRes.ok || !lRes.ok || !sRes.ok) {
@@ -92,7 +92,7 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${merchantId}_logs.csv`;
+    a.download = `${merchantId || 'merchant'}_logs.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -109,17 +109,11 @@ export default function Dashboard() {
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
-        <input
-          className="border p-2 flex-1 min-w-[150px]"
-          value={merchantId}
-          onChange={e => setMerchantId(e.target.value)}
-          placeholder="Merchant ID"
-        />
         <button
           onClick={fetchData}
           className="bg-indigo-500 text-white px-4 py-2 rounded"
         >
-          Fetch Data
+          Refresh
         </button>
       </div>
 

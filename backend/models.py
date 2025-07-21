@@ -3,6 +3,7 @@ from datetime import datetime
 import uuid
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker
+from flask_login import UserMixin
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'bots.db')
 
@@ -17,7 +18,7 @@ def get_db():
     finally:
         db.close()
 
-class Merchant(Base):
+class Merchant(UserMixin, Base):
     __tablename__ = 'merchants'
     id = Column(String, primary_key=True)
     email = Column(String, unique=True)
