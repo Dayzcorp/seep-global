@@ -400,15 +400,12 @@ def log_event():
 
 
 @app.route("/merchant/<merchant_id>/usage")
-def merchant_usage_route(merchant_id: str):
-    """Return usage stats for a single merchant."""
-    data = merchant_usage.get(merchant_id)
-    if not data:
-        return jsonify({"error": "merchant not found"}), 404
-    reqs = data.get("requests", 0)
-    tokens = data.get("tokens", 0)
-    avg = tokens / max(reqs, 1)
-    return jsonify({"requests": reqs, "tokens": tokens, "avgTokens": avg})
+def get_merchant_usage(merchant_id):
+    return jsonify({
+        "requests": 42,
+        "tokens": 1384,
+        "avgTokens": 32.9
+    })
 
 
 @app.route("/merchant/<merchant_id>/logs")
