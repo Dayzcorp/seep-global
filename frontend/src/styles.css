@@ -278,3 +278,23 @@ textarea {
     flex-direction: row;
   }
 }
+
+/* Simple bar chart */
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 100px;
+}
+
+.chart-bar {
+  flex: 1;
+  background: #6366f1;
+  border-radius: 4px 4px 0 0;
+}
+
+@media (max-width: 640px) {
+  .chart {
+    height: 80px;
+  }
+}
