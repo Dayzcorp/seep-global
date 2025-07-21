@@ -9,9 +9,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import openai
 from dotenv import load_dotenv
 import requests
+import json
+from bs4 import BeautifulSoup
 import difflib
 from datetime import datetime
-from models import Base, engine, SessionLocal, init_db as init_sqlalchemy_db, Merchant
+from models import (
+    Base,
+    engine,
+    SessionLocal,
+    init_db as init_sqlalchemy_db,
+    Merchant,
+    Product,
+)
 import uuid
 
 load_dotenv()
@@ -138,7 +147,15 @@ merchant_usage = defaultdict(
 # Store chat logs per merchant
 merchant_logs = defaultdict(list)
 # In-memory store for configuration and extended stats
-config = {"welcome_message": "", "tone": "Friendly", "business_name": ""}
+config = {
+    "welcome_message": "",
+    "tone": "Friendly",
+    "business_name": "",
+    "store_type": None,
+    "store_domain": None,
+    "store_api_key": None,
+    "product_endpoint": None,
+}
 # Basic per-merchant links used by the embeddable widget. In a real
 # deployment these would likely come from a database, but for this demo
 # we simply provide defaults for the "test-merchant" ID.
@@ -166,10 +183,104 @@ stats = {
 }
 
 
+def sync_custom_html_products(merchant_id: str):
+    """Fetch product data from a custom HTML store."""
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        if not m or not m.store_domain:
+            return
+        m.product_sync_status = "syncing"
+        db.commit()
+        products = []
+        base = f"https://{m.store_domain}"
+        try:
+            resp = requests.get(base, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            products.extend(_extract_products(soup, base))
+
+            links = [a["href"] for a in soup.find_all("a", href=True) if "product" in a["href"]]
+            for link in links[:3]:
+                url = link if link.startswith("http") else base.rstrip("/") + "/" + link.lstrip("/")
+                try:
+                    r = requests.get(url, timeout=10)
+                    soup2 = BeautifulSoup(r.text, "html.parser")
+                    products.extend(_extract_products(soup2, url))
+                except Exception:
+                    pass
+
+            db.query(Product).filter_by(merchant_id=merchant_id).delete()
+            for p in products:
+                db.add(
+                    Product(
+                        merchant_id=merchant_id,
+                        title=p.get("title"),
+                        description=p.get("description"),
+                        price=p.get("price"),
+                        url=p.get("url"),
+                        image=p.get("image"),
+                    )
+                )
+            m.product_sync_status = "success"
+            m.product_last_synced = datetime.utcnow()
+        except Exception:
+            m.product_sync_status = "error"
+        finally:
+            db.commit()
+
+
+def _extract_products(soup: BeautifulSoup, base_url: str):
+    items = []
+    for script in soup.find_all("script", {"type": "application/ld+json"}):
+        try:
+            data = json.loads(script.string)
+        except Exception:
+            continue
+        entries = data if isinstance(data, list) else [data]
+        for d in entries:
+            if isinstance(d, dict) and d.get("@type") == "Product":
+                items.append(
+                    {
+                        "title": d.get("name"),
+                        "description": d.get("description"),
+                        "price": (d.get("offers") or {}).get("price"),
+                        "url": d.get("url") or base_url,
+                        "image": d.get("image", ""),
+                    }
+                )
+    if not items:
+        og_title = soup.find("meta", property="og:title")
+        if og_title:
+            items.append(
+                {
+                    "title": og_title.get("content"),
+                    "description": (soup.find("meta", property="og:description") or {}).get("content"),
+                    "price": (soup.find("meta", property="product:price:amount") or {}).get("content"),
+                    "url": base_url,
+                    "image": (soup.find("meta", property="og:image") or {}).get("content"),
+                }
+            )
+    return items
+
+
 def merchant_config_data(merchant_id: str):
     links = merchant_configs.get(merchant_id, merchant_configs.get("test-merchant", {}))
     cfg = {"welcomeMessage": get_welcome(merchant_id)}
     cfg.update(links)
+    with SessionLocal() as db:
+        m = db.query(Merchant).filter_by(id=merchant_id).first()
+        if m:
+            cfg.update(
+                {
+                    "storeType": m.store_type,
+                    "storeDomain": m.store_domain,
+                    "storeApiKey": m.store_api_key,
+                    "productEndpoint": m.product_endpoint,
+                    "productSyncStatus": m.product_sync_status,
+                    "productLastSynced": m.product_last_synced.isoformat()
+                    if m.product_last_synced
+                    else None,
+                }
+            )
     return cfg
 
 
@@ -256,11 +367,31 @@ def chat():
     user_message = data.get("message", "")
     sess["requests"] += 1
 
+    with SessionLocal() as db:
+        m = db.query(Merchant).filter_by(id=merchant_id).first()
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+
+    product_info = "\n".join(
+        f"- {p.title}: {p.price}" for p in prods[:5] if p.title
+    )
+    outdated = not prods or (
+        m and m.product_last_synced and (datetime.utcnow() - m.product_last_synced).days > 7
+    )
+
     # If the user mentions cart/checkout keywords, flag session
     lower = user_message.lower()
     keywords = ["cart", "checkout", "left item", "left in cart", "forgot"]
     if any(k in lower for k in keywords):
         abandoned_cart_flags[session_id] = True
+
+    # Quick product responses
+    if "bestseller" in lower and prods:
+        titles = ", ".join(p.title for p in prods[:3])
+        return Response(f"Our popular products include: {titles}", mimetype="text/plain")
+    if "price of" in lower:
+        for p in prods:
+            if p.title and p.title.lower() in lower:
+                return Response(f"The price of {p.title} is {p.price}", mimetype="text/plain")
 
     # Check stored FAQs before calling the LLM
     for faq in get_faqs():
@@ -286,10 +417,16 @@ def chat():
         full = ""
         try:
             client = get_client()
+            context = ""
+            if product_info:
+                context = "Available products:\n" + product_info
+            elif outdated:
+                context = "Product data is missing or outdated. Suggest updating store configuration when asked."
             response = client.chat.completions.create(
                 model=MODEL,
                 messages=[
                     {"role": "system", "content": "You are Seep, a smart and helpful assistant."},
+                    {"role": "system", "content": context},
                     {"role": "user", "content": user_message},
                 ],
                 stream=True,
@@ -366,6 +503,10 @@ def config_route():
         config["welcome_message"] = data.get("welcomeMessage", config["welcome_message"])
         config["tone"] = data.get("tone", config["tone"])
         config["business_name"] = data.get("businessName", config["business_name"])
+        config["store_type"] = data.get("storeType", config.get("store_type"))
+        config["store_domain"] = data.get("storeDomain", config.get("store_domain"))
+        config["store_api_key"] = data.get("storeApiKey", config.get("store_api_key"))
+        config["product_endpoint"] = data.get("productEndpoint", config.get("product_endpoint"))
         return jsonify({"status": "ok"})
     return jsonify(config)
 
@@ -572,7 +713,48 @@ def merchant_config_save():
         "contactUrl": data.get("contactUrl", ""),
     }
     save_welcome(merchant_id, data.get("welcomeGreeting", ""))
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        if m:
+            m.store_type = data.get("storeType")
+            m.store_domain = data.get("storeDomain")
+            m.store_api_key = data.get("storeApiKey")
+            m.product_endpoint = data.get("productEndpoint")
+            m.product_sync_status = None
+            db.commit()
+            if m.store_type == "Custom HTML" and m.store_domain:
+                sync_custom_html_products(merchant_id)
     return jsonify({"status": "ok"})
+
+
+@app.route("/merchant/<merchant_id>/products", methods=["GET", "POST"])
+@login_required
+def merchant_products(merchant_id):
+    if merchant_id != current_user.id:
+        return jsonify({"error": "unauthorized"}), 403
+    if request.method == "POST":
+        sync_custom_html_products(merchant_id)
+        return jsonify({"status": "syncing"})
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+        return jsonify(
+            {
+                "products": [
+                    {
+                        "title": p.title,
+                        "price": p.price,
+                        "url": p.url,
+                        "image": p.image,
+                    }
+                    for p in prods
+                ],
+                "syncStatus": m.product_sync_status if m else None,
+                "lastUpdated": m.product_last_synced.isoformat()
+                if m and m.product_last_synced
+                else None,
+            }
+        )
 
 
 @app.route("/setup-widget")
