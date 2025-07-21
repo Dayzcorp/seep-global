@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
+const API_BASE = 'http://localhost:5000';
+
 export default function SetupModal({ onClose }) {
   const [welcome, setWelcome] = useState('');
   const [tone, setTone] = useState('Friendly');
@@ -11,7 +13,7 @@ export default function SetupModal({ onClose }) {
   }, []);
 
   const save = async () => {
-    await fetch('/config', {
+    await fetch(`${API_BASE}/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ welcomeMessage: welcome, tone, businessName: business })

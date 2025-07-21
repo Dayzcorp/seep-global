@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
+const API_BASE = 'http://localhost:5000';
+
 export default function Dashboard() {
   const [merchantId, setMerchantId] = useState('demo');
   const [usage, setUsage] = useState(null);
@@ -13,18 +15,27 @@ export default function Dashboard() {
     setError('');
     try {
       const [uRes, lRes, sRes] = await Promise.all([
-        fetch(`/merchant/${merchantId}/usage`),
-        fetch(`/merchant/${merchantId}/logs`),
-        fetch(`/merchant/${merchantId}/suggestions`)
+        fetch(`${API_BASE}/merchant/${merchantId}/usage`),
+        fetch(`${API_BASE}/merchant/${merchantId}/logs`),
+        fetch(`${API_BASE}/merchant/${merchantId}/suggestions`)
       ]);
 
       if (!uRes.ok || !lRes.ok || !sRes.ok) {
         throw new Error('Request failed');
       }
 
-      const usageData = await uRes.json();
-      const logsData = await lRes.json();
-      const tipsData = await sRes.json();
+      const toJson = async (res) => {
+        const text = await res.text();
+        if (!res.headers.get('content-type')?.includes('application/json')) {
+          console.warn('Expected JSON but received:', text.slice(0, 100));
+          return null;
+        }
+        return JSON.parse(text);
+      };
+
+      const usageData = await toJson(uRes);
+      const logsData = await toJson(lRes);
+      const tipsData = await toJson(sRes);
 
       setUsage(usageData);
       setLogs((logsData.logs || []).slice().reverse());
