@@ -4,6 +4,8 @@ from collections import defaultdict
 from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory, render_template
 import sqlite3
 from flask_cors import CORS
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import openai
 from dotenv import load_dotenv
 import requests
@@ -18,8 +20,14 @@ API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 app = Flask(__name__)
+# Secret key for session cookies
+app.secret_key = os.getenv("SECRET_KEY", "secret-key")
 # Allow embedding from any domain
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+# Setup Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
 
 @app.route("/")
 def index():
@@ -45,10 +53,25 @@ init_sqlite_tables()
 init_sqlalchemy_db()
 
 
+@login_manager.user_loader
+def load_user(user_id):
+    with SessionLocal() as db:
+        return db.query(Merchant).get(user_id)
+
+
 def ensure_default_merchant():
     with SessionLocal() as db:
         if not db.query(Merchant).filter_by(id="test-merchant").first():
-            m = Merchant(id="test-merchant", email="test@example.com", api_key=str(uuid.uuid4()))
+            m = Merchant(
+                id="test-merchant",
+                email="test@example.com",
+                password_hash=generate_password_hash("password"),
+                api_key=str(uuid.uuid4()),
+                greeting="Welcome to Seep!",
+                cart_url="https://store.com/cart",
+                checkout_url="https://store.com/checkout",
+                contact_url="mailto:support@store.com",
+            )
             db.add(m)
             db.commit()
 
@@ -141,6 +164,62 @@ stats = {
     "failure": 0,
     "conversions": 0,
 }
+
+
+def merchant_config_data(merchant_id: str):
+    links = merchant_configs.get(merchant_id, merchant_configs.get("test-merchant", {}))
+    cfg = {"welcomeMessage": get_welcome(merchant_id)}
+    cfg.update(links)
+    return cfg
+
+
+@app.route("/auth/register", methods=["POST"])
+def register():
+    data = request.get_json(force=True) or {}
+    email = data.get("email")
+    password = data.get("password")
+    if not email or not password:
+        return jsonify({"error": "email and password required"}), 400
+    with SessionLocal() as db:
+        if db.query(Merchant).filter_by(email=email).first():
+            return jsonify({"error": "exists"}), 400
+        m = Merchant(
+            id=str(uuid.uuid4()),
+            email=email,
+            password_hash=generate_password_hash(password),
+            greeting=data.get("greeting"),
+            color=data.get("color"),
+            cart_url=data.get("cartUrl"),
+            checkout_url=data.get("checkoutUrl"),
+            contact_url=data.get("contactUrl"),
+            api_key=str(uuid.uuid4()),
+        )
+        db.add(m)
+        db.commit()
+        merchant_configs[m.id] = {
+            "cartUrl": m.cart_url,
+            "checkoutUrl": m.checkout_url,
+            "contactUrl": m.contact_url,
+        }
+        if m.greeting:
+            save_welcome(m.id, m.greeting)
+        login_user(m)
+        return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+
+
+@app.route("/auth/login", methods=["POST"])
+def login():
+    data = request.get_json(force=True) or {}
+    email = data.get("email")
+    password = data.get("password")
+    if not email or not password:
+        return jsonify({"error": "email and password required"}), 400
+    with SessionLocal() as db:
+        m = db.query(Merchant).filter_by(email=email).first()
+        if not m or not m.password_hash or not check_password_hash(m.password_hash, password):
+            return jsonify({"error": "invalid"}), 401
+        login_user(m)
+    return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
 
 
 def get_client():
@@ -413,17 +492,19 @@ def log_event():
     return jsonify({"status": "ok"})
 
 
-@app.route("/merchant/<merchant_id>/usage")
-def get_merchant_usage(merchant_id):
-    return jsonify({
-        "requests": 42,
-        "tokens": 1384,
-        "avgTokens": 32.9
-    })
+@app.route("/merchant/usage")
+@login_required
+def get_merchant_usage():
+    merchant_id = current_user.id
+    data = merchant_usage.get(merchant_id, {"requests": 0, "tokens": 0})
+    avg = data["tokens"] / data["requests"] if data["requests"] else 0
+    return jsonify({"requests": data["requests"], "tokens": data["tokens"], "avgTokens": avg})
 
 
-@app.route('/merchant/<merchant_id>/logs')
-def get_merchant_logs(merchant_id):
+@app.route('/merchant/logs')
+@login_required
+def get_merchant_logs():
+    merchant_id = current_user.id
     return jsonify({
         "logs": [
             {
@@ -439,8 +520,10 @@ def get_merchant_logs(merchant_id):
         ]
     })
 
-@app.route('/merchant/<merchant_id>/tips')
-def get_merchant_tips(merchant_id):
+@app.route('/merchant/tips')
+@login_required
+def get_merchant_tips():
+    merchant_id = current_user.id
     return jsonify({
         "tips": [
             "Add product badges to highlight bestsellers.",
@@ -450,9 +533,11 @@ def get_merchant_tips(merchant_id):
     })
 
 
-@app.route("/merchant/<merchant_id>/suggestions")
-def merchant_suggestions(merchant_id: str):
+@app.route("/merchant/suggestions")
+@login_required
+def merchant_suggestions():
     """Return AI-powered suggestions (dummy for now)."""
+    merchant_id = current_user.id
     tips = [
         "Respond quickly to customer questions.",
         "Personalize messages with customer details.",
@@ -461,27 +546,26 @@ def merchant_suggestions(merchant_id: str):
 
 
 @app.route("/merchant/dashboard")
+@login_required
 def merchant_dashboard():
     """Serve the merchant dashboard HTML."""
     return render_template("dashboard.html")
 
 
-@app.route("/merchant/config/<merchant_id>")
-def merchant_config(merchant_id: str):
-    """Return basic configuration for a merchant."""
-    links = merchant_configs.get(merchant_id, merchant_configs.get("test-merchant", {}))
-    cfg = {"welcomeMessage": get_welcome(merchant_id)}
-    cfg.update(links)
-    return jsonify(cfg)
+@app.route("/merchant/config")
+@login_required
+def merchant_config():
+    """Return basic configuration for the logged in merchant."""
+    merchant_id = current_user.id
+    return jsonify(merchant_config_data(merchant_id))
 
 
 @app.route("/merchant/config", methods=["POST"])
+@login_required
 def merchant_config_save():
     """Save merchant configuration from the onboarding form."""
     data = request.get_json(force=True) or {}
-    merchant_id = data.get("merchantId")
-    if not merchant_id:
-        return jsonify({"error": "merchantId required"}), 400
+    merchant_id = current_user.id
     merchant_configs[merchant_id] = {
         "cartUrl": data.get("cartUrl", ""),
         "checkoutUrl": data.get("checkoutUrl", ""),
