@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 import requests
 import difflib
 from datetime import datetime
+from .models import Base, engine, SessionLocal, init_db as init_sqlalchemy_db, Merchant
+import uuid
 
 load_dotenv()
 
@@ -27,7 +29,7 @@ def index():
 DB_PATH = os.path.join(os.path.dirname(__file__), 'bots.db')
 
 
-def init_db():
+def init_sqlite_tables():
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS bots (name TEXT PRIMARY KEY, welcome_message TEXT)"
@@ -39,7 +41,19 @@ def init_db():
     conn.close()
 
 
-init_db()
+init_sqlite_tables()
+init_sqlalchemy_db()
+
+
+def ensure_default_merchant():
+    with SessionLocal() as db:
+        if not db.query(Merchant).filter_by(id="test-merchant").first():
+            m = Merchant(id="test-merchant", email="test@example.com", api_key=str(uuid.uuid4()))
+            db.add(m)
+            db.commit()
+
+
+ensure_default_merchant()
 
 def get_welcome(bot_name: str) -> str:
     conn = sqlite3.connect(DB_PATH)
