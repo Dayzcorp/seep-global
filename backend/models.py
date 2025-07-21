@@ -31,6 +31,7 @@ class Merchant(UserMixin, Base):
     checkout_url = Column(String)
     contact_url = Column(String)
     api_key = Column(String, unique=True)
+    api_secret = Column(String)
     store_type = Column(String)
     store_domain = Column(String)
     store_api_key = Column(String)

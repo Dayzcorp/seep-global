@@ -220,6 +220,12 @@ export default function Dashboard() {
                   API Key
                   <input className="border ml-2" value={productSettings.apiKey || ''} onChange={e => setProductSettings(ps => ({...ps, apiKey: e.target.value}))} />
                 </label>
+                {productSettings.apiType === 'woocommerce' && (
+                  <label className="block">
+                    API Secret
+                    <input className="border ml-2" value={productSettings.apiSecret || ''} onChange={e => setProductSettings(ps => ({...ps, apiSecret: e.target.value}))} />
+                  </label>
+                )}
                 <label className="block">
                   Store URL
                   <input className="border ml-2" value={productSettings.storeUrl || ''} onChange={e => setProductSettings(ps => ({...ps, storeUrl: e.target.value}))} />
