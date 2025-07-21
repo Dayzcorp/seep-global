@@ -3,10 +3,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 const API_BASE = 'http://localhost:5000';
 
 export default function Dashboard() {
-  const [merchantId, setMerchantId] = useState('');
+  const [merchantId, setMerchantId] = useState('test-merchant');
   const [usage, setUsage] = useState(null);
   const [logs, setLogs] = useState([]);
   const [tips, setTips] = useState([]);
+  const [productInfo, setProductInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [alert, setAlert] = useState('');
@@ -15,10 +16,11 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const [uRes, lRes, sRes] = await Promise.all([
+      const [uRes, lRes, sRes, pRes] = await Promise.all([
         fetch(`${API_BASE}/merchant/usage`),
         fetch(`${API_BASE}/merchant/logs`),
-        fetch(`${API_BASE}/merchant/suggestions`)
+        fetch(`${API_BASE}/merchant/suggestions`),
+        fetch(`${API_BASE}/merchant/${merchantId}/products`)
       ]);
 
       if (!uRes.ok || !lRes.ok || !sRes.ok) {
@@ -37,10 +39,12 @@ export default function Dashboard() {
       const usageData = await toJson(uRes);
       const logsData = await toJson(lRes);
       const tipsData = await toJson(sRes);
+      const productData = await toJson(pRes);
 
       setUsage(usageData);
       setLogs((logsData.logs || []).slice().reverse());
       setTips(tipsData.tips || []);
+      setProductInfo(productData);
     } catch (err) {
       setError('Failed to fetch data');
       setAlert('Failed to fetch data');
@@ -95,6 +99,11 @@ export default function Dashboard() {
     a.download = `${merchantId || 'merchant'}_logs.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const refreshProducts = async () => {
+    await fetch(`${API_BASE}/merchant/${merchantId}/products`, { method: 'POST' });
+    fetchData();
   };
 
   const botOnline = logs.length && (Date.now() - new Date(logs[0].timestamp)) < 5 * 60 * 1000;
@@ -157,6 +166,15 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {productInfo && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">Product Awareness</h2>
+          <p>Sync Status: {productInfo.syncStatus || 'unknown'}</p>
+          <p>Last Updated: {productInfo.lastUpdated ? new Date(productInfo.lastUpdated).toLocaleString() : 'never'}</p>
+          <button onClick={refreshProducts} className="mt-2 bg-indigo-500 text-white px-4 py-1 rounded">Refresh Products</button>
         </section>
       )}
 

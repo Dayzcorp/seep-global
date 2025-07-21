@@ -31,6 +31,23 @@ class Merchant(UserMixin, Base):
     checkout_url = Column(String)
     contact_url = Column(String)
     api_key = Column(String, unique=True)
+    store_type = Column(String)
+    store_domain = Column(String)
+    store_api_key = Column(String)
+    product_endpoint = Column(String)
+    product_sync_status = Column(String)
+    product_last_synced = Column(DateTime)
+
+class Product(Base):
+    __tablename__ = 'products'
+    id = Column(Integer, primary_key=True)
+    merchant_id = Column(String, ForeignKey('merchants.id'))
+    title = Column(String)
+    description = Column(Text)
+    price = Column(String)
+    url = Column(String)
+    image = Column(String)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 class MerchantUsage(Base):
     __tablename__ = 'merchant_usage'
