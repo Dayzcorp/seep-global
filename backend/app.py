@@ -483,6 +483,13 @@ def setup_widget():
     return render_template("setup_widget.html")
 
 
+@app.route("/onboarding")
+def onboarding_page():
+    """Serve the static onboarding guide with live demo."""
+    public_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "public")
+    return send_from_directory(public_dir, "onboarding.html")
+
+
 @app.route("/widget/seep-widget.js")
 def widget_script():
     """Serve the embeddable chat widget script."""
