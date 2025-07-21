@@ -8,6 +8,8 @@ export default function Dashboard() {
   const [logs, setLogs] = useState([]);
   const [tips, setTips] = useState([]);
   const [productInfo, setProductInfo] = useState(null);
+  const [productSettings, setProductSettings] = useState(null);
+  const [tab, setTab] = useState('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [alert, setAlert] = useState('');
@@ -16,11 +18,12 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const [uRes, lRes, sRes, pRes] = await Promise.all([
+      const [uRes, lRes, sRes, pRes, psRes] = await Promise.all([
         fetch(`${API_BASE}/merchant/usage`),
         fetch(`${API_BASE}/merchant/logs`),
         fetch(`${API_BASE}/merchant/suggestions`),
-        fetch(`${API_BASE}/merchant/${merchantId}/products`)
+        fetch(`${API_BASE}/merchant/${merchantId}/products`),
+        fetch(`${API_BASE}/merchant/product-settings/${merchantId}`)
       ]);
 
       if (!uRes.ok || !lRes.ok || !sRes.ok) {
@@ -40,11 +43,13 @@ export default function Dashboard() {
       const logsData = await toJson(lRes);
       const tipsData = await toJson(sRes);
       const productData = await toJson(pRes);
+      const productSettingsData = await toJson(psRes);
 
       setUsage(usageData);
       setLogs((logsData.logs || []).slice().reverse());
       setTips(tipsData.tips || []);
       setProductInfo(productData);
+      setProductSettings(productSettingsData);
     } catch (err) {
       setError('Failed to fetch data');
       setAlert('Failed to fetch data');
@@ -106,6 +111,16 @@ export default function Dashboard() {
     fetchData();
   };
 
+  const saveProductSettings = async () => {
+    await fetch(`${API_BASE}/merchant/product-settings/${merchantId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(productSettings)
+    });
+    fetchData();
+    setAlert('Settings saved');
+  };
+
   const botOnline = logs.length && (Date.now() - new Date(logs[0].timestamp)) < 5 * 60 * 1000;
 
   return (
@@ -115,6 +130,11 @@ export default function Dashboard() {
           Merchant Dashboard
           <span className={`px-2 py-1 rounded text-xs text-white ${botOnline ? 'bg-green-500' : 'bg-red-500'}`}>{botOnline ? 'Online' : 'Offline'}</span>
         </h1>
+      </div>
+
+      <div className="flex gap-4 mb-4">
+        <button className={tab === 'overview' ? 'font-bold' : ''} onClick={() => setTab('overview')}>Overview</button>
+        <button className={tab === 'products' ? 'font-bold' : ''} onClick={() => setTab('products')}>Product Awareness</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -132,7 +152,7 @@ export default function Dashboard() {
         <p className="text-gray-500">No data found for this merchant.</p>
       )}
 
-      {usage && (
+      {tab === 'overview' && usage && (
         <section>
           <h2 className="text-xl font-semibold mb-2">Usage</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -169,16 +189,51 @@ export default function Dashboard() {
         </section>
       )}
 
-      {productInfo && (
+      {tab === 'products' && productInfo && (
         <section>
           <h2 className="text-xl font-semibold mb-2">Product Awareness</h2>
           <p>Sync Status: {productInfo.syncStatus || 'unknown'}</p>
           <p>Last Updated: {productInfo.lastUpdated ? new Date(productInfo.lastUpdated).toLocaleString() : 'never'}</p>
-          <button onClick={refreshProducts} className="mt-2 bg-indigo-500 text-white px-4 py-1 rounded">Refresh Products</button>
+          <div className="space-y-2 mt-2">
+            <label className="block">
+              <input type="checkbox" className="mr-1" checked={productSettings?.productMethod !== 'none'} onChange={e => setProductSettings(ps => ({...ps, productMethod: e.target.checked ? 'html' : 'none'}))} />
+              Enable Product Awareness
+            </label>
+            <label className="block">
+              Method
+              <select className="ml-2" value={productSettings?.productMethod || ''} onChange={e => setProductSettings(ps => ({...ps, productMethod: e.target.value}))}>
+                <option value="none">None</option>
+                <option value="html">Structured HTML</option>
+                <option value="api">API</option>
+              </select>
+            </label>
+            {productSettings?.productMethod === 'api' && (
+              <>
+                <label className="block">
+                  API Type
+                  <select className="ml-2" value={productSettings.apiType || 'shopify'} onChange={e => setProductSettings(ps => ({...ps, apiType: e.target.value}))}>
+                    <option value="shopify">Shopify</option>
+                    <option value="woocommerce">WooCommerce</option>
+                  </select>
+                </label>
+                <label className="block">
+                  API Key
+                  <input className="border ml-2" value={productSettings.apiKey || ''} onChange={e => setProductSettings(ps => ({...ps, apiKey: e.target.value}))} />
+                </label>
+                <label className="block">
+                  Store URL
+                  <input className="border ml-2" value={productSettings.storeUrl || ''} onChange={e => setProductSettings(ps => ({...ps, storeUrl: e.target.value}))} />
+                </label>
+              </>
+            )}
+            <button onClick={saveProductSettings} className="bg-indigo-500 text-white px-4 py-1 rounded">Save Settings</button>
+            <button onClick={refreshProducts} className="ml-2 bg-indigo-500 text-white px-4 py-1 rounded">Refresh Products</button>
+            <p className="text-sm">Products cached: {productInfo.products.length}</p>
+          </div>
         </section>
       )}
 
-      {logs.length > 0 && (
+      {tab === 'overview' && logs.length > 0 && (
         <section>
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-xl font-semibold">Chat Logs</h2>
