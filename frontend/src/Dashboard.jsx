@@ -216,6 +216,18 @@ export default function Dashboard() {
                     <option value="woocommerce">WooCommerce</option>
                   </select>
                 </label>
+                {productSettings.apiType === 'shopify' && (
+                  <>
+                    <label className="block">
+                      Shopify Store URL
+                      <input className="border ml-2" value={productSettings.shopifyDomain || ''} onChange={e => setProductSettings(ps => ({...ps, shopifyDomain: e.target.value}))} />
+                    </label>
+                    <label className="block">
+                      Storefront Access Token
+                      <input className="border ml-2" value={productSettings.shopifyToken || ''} onChange={e => setProductSettings(ps => ({...ps, shopifyToken: e.target.value}))} />
+                    </label>
+                  </>
+                )}
                 <label className="block">
                   API Key
                   <input className="border ml-2" value={productSettings.apiKey || ''} onChange={e => setProductSettings(ps => ({...ps, apiKey: e.target.value}))} />

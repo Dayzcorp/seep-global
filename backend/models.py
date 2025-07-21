@@ -42,6 +42,11 @@ class Merchant(UserMixin, Base):
     product_method = Column(String)
     api_type = Column(String)
     store_url = Column(String)
+    # Shopify specific fields
+    shopify_domain = Column(String)
+    shopify_token = Column(String)
+    # Enable product suggestions feature
+    suggest_products = Column(Integer, default=1)
 
 class Product(Base):
     __tablename__ = 'products'
@@ -50,20 +55,8 @@ class Product(Base):
     title = Column(String)
     description = Column(Text)
     price = Column(String)
-    url = Column(String)
-    image = Column(String)
-    updated_at = Column(DateTime, default=datetime.utcnow)
-
-# New table for cached merchant product data
-class MerchantProduct(Base):
-    __tablename__ = 'merchant_products'
-    id = Column(Integer, primary_key=True)
-    merchant_id = Column(String, ForeignKey('merchants.id'))
-    title = Column(String)
-    description = Column(Text)
-    price = Column(String)
     image_url = Column(String)
-    link = Column(String)
+    product_url = Column(String)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 class MerchantUsage(Base):

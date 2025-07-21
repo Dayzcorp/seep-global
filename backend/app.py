@@ -20,7 +20,6 @@ from models import (
     init_db as init_sqlalchemy_db,
     Merchant,
     Product,
-    MerchantProduct,
 )
 import uuid
 
@@ -84,6 +83,9 @@ def ensure_default_merchant():
                 contact_url="mailto:support@store.com",
                 product_method="html",
                 store_url="store.com",
+                shopify_domain=None,
+                shopify_token=None,
+                suggest_products=1,
             )
             db.add(m)
             db.commit()
@@ -214,16 +216,16 @@ def sync_custom_html_products(merchant_id: str):
                 except Exception:
                     pass
 
-            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
+            db.query(Product).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    MerchantProduct(
+                    Product(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
                         price=p.get("price"),
                         image_url=p.get("image"),
-                        link=p.get("url"),
+                        product_url=p.get("url"),
                     )
                 )
             m.product_sync_status = "success"
@@ -235,7 +237,7 @@ def sync_custom_html_products(merchant_id: str):
 
 
 def sync_api_products(merchant_id: str):
-    """Fetch product data from supported store APIs."""
+    """Fetch product data from WooCommerce or legacy APIs."""
     with SessionLocal() as db:
         m = db.query(Merchant).get(merchant_id)
         if not m or not m.store_url or not m.api_key:
@@ -244,26 +246,7 @@ def sync_api_products(merchant_id: str):
         db.commit()
         products = []
         try:
-            if m.api_type == "shopify":
-                resp = requests.get(
-                    f"https://{m.store_url}/products.json",
-                    headers={"X-Shopify-Access-Token": m.api_key},
-                    timeout=10,
-                )
-                for p in resp.json().get("products", [])[:10]:
-                    image = ""
-                    if p.get("images"):
-                        image = p["images"][0].get("src", "")
-                    products.append(
-                        {
-                            "title": p.get("title"),
-                            "description": p.get("body_html"),
-                            "price": (p.get("variants") or [{}])[0].get("price"),
-                            "link": f"https://{m.store_url}/products/{p.get('handle')}",
-                            "image_url": image,
-                        }
-                    )
-            elif m.api_type == "woocommerce":
+            if m.api_type == "woocommerce":
                 params = {}
                 if m.api_secret:
                     params = {"consumer_key": m.api_key, "consumer_secret": m.api_secret}
@@ -290,16 +273,16 @@ def sync_api_products(merchant_id: str):
                         }
                     )
 
-            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
+            db.query(Product).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    MerchantProduct(
+                    Product(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
                         price=p.get("price"),
                         image_url=p.get("image_url"),
-                        link=p.get("link"),
+                        product_url=p.get("link"),
                     )
                 )
             m.product_sync_status = "success"
@@ -315,10 +298,14 @@ def sync_products_for_merchant(merchant_id: str):
     with SessionLocal() as db:
         m = db.query(Merchant).get(merchant_id)
         method = m.product_method if m else None
+        api_type = m.api_type if m else None
     if method == "html":
         sync_custom_html_products(merchant_id)
     elif method == "api":
-        sync_api_products(merchant_id)
+        if api_type == "shopify":
+            sync_shopify_products(merchant_id)
+        else:
+            sync_api_products(merchant_id)
 
 def _extract_products(soup: BeautifulSoup, base_url: str):
     items = []
@@ -374,6 +361,9 @@ def merchant_config_data(merchant_id: str):
                     "productMethod": m.product_method,
                     "apiType": m.api_type,
                     "storeUrl": m.store_url,
+                    "shopifyDomain": m.shopify_domain,
+                    "shopifyToken": m.shopify_token,
+                    "suggestProducts": bool(m.suggest_products),
                 }
             )
     return cfg
@@ -402,6 +392,9 @@ def register():
             product_method=data.get("productMethod"),
             api_type=data.get("apiType"),
             store_url=data.get("storeUrl"),
+            shopify_domain=data.get("shopifyDomain"),
+            shopify_token=data.get("shopifyToken"),
+            suggest_products=data.get("suggestProducts", 1),
         )
         db.add(m)
         db.commit()
@@ -467,10 +460,10 @@ def chat():
 
     with SessionLocal() as db:
         m = db.query(Merchant).filter_by(id=merchant_id).first()
-        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
 
     product_info = "\n".join(
-        f"- {p.title} ({p.price}): {p.link}" for p in prods[:5] if p.title
+        f"- {p.title} ({p.price}): {p.product_url}" for p in prods[:5] if p.title
     )
     outdated = not prods or (
         m and m.product_last_synced and (datetime.utcnow() - m.product_last_synced).days > 7
@@ -484,6 +477,32 @@ def chat():
 
     if ("product" in lower or "price" in lower or "item" in lower) and not prods:
         return Response("Sorry, I couldn't detect any products yet.", mimetype="text/plain")
+
+    if m and m.suggest_products and prods:
+        matches = [
+            p for p in prods if (p.title and lower in p.title.lower()) or (p.description and lower in p.description.lower())
+        ]
+        if matches:
+            html = "".join(
+                f"<p><img src='{p.image_url}' width='50'/> <strong>{p.title}</strong> - {p.price} <a href='{p.product_url}'>View</a></p>"
+                for p in matches[:3]
+            )
+            merchant_logs[merchant_id].append(
+                {"session": session_id, "timestamp": datetime.utcnow().isoformat(), "user": user_message, "assistant": html}
+            )
+            merchant_usage[merchant_id]["requests"] += 1
+            return Response(html, mimetype="text/html")
+        else:
+            fallback = prods[:3]
+            html = "Here are a few products you might like:<br/>" + "".join(
+                f"<p><img src='{p.image_url}' width='50'/> <strong>{p.title}</strong> - {p.price} <a href='{p.product_url}'>View</a></p>"
+                for p in fallback
+            )
+            merchant_logs[merchant_id].append(
+                {"session": session_id, "timestamp": datetime.utcnow().isoformat(), "user": user_message, "assistant": html}
+            )
+            merchant_usage[merchant_id]["requests"] += 1
+            return Response(html, mimetype="text/html")
 
     # Quick product responses
     if "bestseller" in lower and prods:
@@ -821,8 +840,77 @@ def merchant_config_save():
             m.store_type = data.get("storeType")
             m.store_domain = data.get("storeDomain")
             m.store_api_key = data.get("storeApiKey")
+            m.shopify_domain = data.get("shopifyDomain")
+            m.shopify_token = data.get("shopifyToken")
+            if "suggestProducts" in data:
+                m.suggest_products = 1 if data.get("suggestProducts") else 0
             m.product_endpoint = data.get("productEndpoint")
             m.product_sync_status = None
+            db.commit()
+            if m.store_type == "Custom HTML" and m.store_domain:
+                sync_custom_html_products(merchant_id)
+    return jsonify({"status": "ok"})
+
+
+def sync_shopify_products(merchant_id: str):
+    """Fetch product data from Shopify Storefront API."""
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        if not m or not m.shopify_domain or not m.shopify_token:
+            return
+        m.product_sync_status = "syncing"
+        db.commit()
+        products = []
+        query = """
+        { products(first:10) { edges { node { title description onlineStoreUrl images(first:1){edges{node{url}}} variants(first:1){edges{node{price{amount}}}} } } } }
+        """
+        try:
+            resp = requests.post(
+                f"https://{m.shopify_domain}/api/2023-10/graphql.json",
+                json={"query": query},
+                headers={
+                    "X-Shopify-Storefront-Access-Token": m.shopify_token,
+                    "Content-Type": "application/json",
+                },
+                timeout=10,
+            )
+            data = resp.json()
+            for edge in data.get("data", {}).get("products", {}).get("edges", []):
+                node = edge.get("node", {})
+                price = None
+                var = node.get("variants", {}).get("edges", [])
+                if var:
+                    price = var[0].get("node", {}).get("price", {}).get("amount")
+                img = node.get("images", {}).get("edges", [])
+                img_url = None
+                if img:
+                    img_url = img[0].get("node", {}).get("url")
+                products.append(
+                    {
+                        "title": node.get("title"),
+                        "description": node.get("description"),
+                        "price": price,
+                        "link": node.get("onlineStoreUrl"),
+                        "image_url": img_url,
+                    }
+                )
+            db.query(Product).filter_by(merchant_id=merchant_id).delete()
+            for p in products:
+                db.add(
+                    Product(
+                        merchant_id=merchant_id,
+                        title=p.get("title"),
+                        description=p.get("description"),
+                        price=p.get("price"),
+                        image_url=p.get("image_url"),
+                        product_url=p.get("link"),
+                    )
+                )
+            m.product_sync_status = "success"
+            m.product_last_synced = datetime.utcnow()
+        except Exception:
+            m.product_sync_status = "error"
+        finally:
             db.commit()
             if m.store_type == "Custom HTML" and m.store_domain:
                 sync_custom_html_products(merchant_id)
@@ -844,6 +932,8 @@ def merchant_product_settings(merchant_id):
                 m.api_key = data.get("apiKey") or m.api_key
                 m.api_secret = data.get("apiSecret") or m.api_secret
                 m.store_url = data.get("storeUrl")
+                m.shopify_domain = data.get("shopifyDomain") or m.shopify_domain
+                m.shopify_token = data.get("shopifyToken") or m.shopify_token
                 m.product_sync_status = None
                 db.commit()
         sync_products_for_merchant(merchant_id)
@@ -857,6 +947,8 @@ def merchant_product_settings(merchant_id):
                 "apiKey": m.api_key if m else None,
                 "apiSecret": m.api_secret if m else None,
                 "storeUrl": m.store_url if m else None,
+                "shopifyDomain": m.shopify_domain if m else None,
+                "shopifyToken": m.shopify_token if m else None,
             }
         )
 
@@ -871,14 +963,14 @@ def merchant_products(merchant_id):
         return jsonify({"status": "syncing"})
     with SessionLocal() as db:
         m = db.query(Merchant).get(merchant_id)
-        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
         return jsonify(
             {
                 "products": [
                     {
                         "title": p.title,
                         "price": p.price,
-                        "url": p.link,
+                        "url": p.product_url,
                         "image": p.image_url,
                     }
                     for p in prods
@@ -898,14 +990,14 @@ def products_public():
     if not merchant_id:
         return jsonify({"products": []})
     with SessionLocal() as db:
-        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
     return jsonify(
         {
             "products": [
                 {
                     "name": p.title,
                     "price": p.price,
-                    "url": p.link,
+                    "url": p.product_url,
                     "image": p.image_url,
                 }
                 for p in prods
