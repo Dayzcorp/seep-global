@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 import requests
 import difflib
 from datetime import datetime
-from .models import Base, engine, SessionLocal, init_db as init_sqlalchemy_db, Merchant
+from models import Base, engine, SessionLocal, init_db as init_sqlalchemy_db, Merchant
 import uuid
 
 load_dotenv()
