@@ -408,10 +408,32 @@ def get_merchant_usage(merchant_id):
     })
 
 
-@app.route("/merchant/<merchant_id>/logs")
-def merchant_logs_route(merchant_id: str):
-    """Return chat logs for a merchant."""
-    return jsonify({"logs": merchant_logs.get(merchant_id, [])})
+@app.route('/merchant/<merchant_id>/logs')
+def get_merchant_logs(merchant_id):
+    return jsonify({
+        "logs": [
+            {
+                "timestamp": "2025-07-21T14:30:00",
+                "user": "How do I track my order?",
+                "assistant": "You can track your order on the 'Track Order' page or via your email confirmation."
+            },
+            {
+                "timestamp": "2025-07-21T14:32:00",
+                "user": "Do you ship to Canada?",
+                "assistant": "Yes, we ship to both the USA and Canada."
+            }
+        ]
+    })
+
+@app.route('/merchant/<merchant_id>/tips')
+def get_merchant_tips(merchant_id):
+    return jsonify({
+        "tips": [
+            "Add product badges to highlight bestsellers.",
+            "Include more FAQs to reduce repetitive questions.",
+            "Consider offering free shipping over $50 to boost cart size."
+        ]
+    })
 
 
 @app.route("/merchant/<merchant_id>/suggestions")
