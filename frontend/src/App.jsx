@@ -4,9 +4,10 @@ import Chat from './Chat';
 import Dashboard from './Dashboard';
 import Navbar from './Navbar';
 
+// For easier debugging, install React DevTools: https://reactjs.org/link/react-devtools
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Navbar />
       <Routes>
         <Route path="/" element={<Chat />} />

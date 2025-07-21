@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Settings from './Settings';
 
+const API_BASE = 'http://localhost:5000';
+
 function Message({ sender, text, time }) {
   return (
     <div className={sender === 'user' ? 'msg user' : 'msg bot'}>
@@ -24,7 +26,7 @@ export default function ChatApp() {
   }, [messages, loading]);
 
   useEffect(() => {
-    fetch(`/bot/${botName}`)
+    fetch(`${API_BASE}/bot/${botName}`)
       .then(res => res.json())
       .then(data => {
         if (data.suggestion) {
@@ -46,7 +48,7 @@ export default function ChatApp() {
     setMessages(prev => [...prev, botPlaceholder]);
 
     try {
-      const response = await fetch('/chat', {
+      const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
