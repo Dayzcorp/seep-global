@@ -29,3 +29,12 @@ To embed the assistant on any page, include the widget script served by the back
 ```
 
 This script automatically fetches the configuration and displays a chat bubble that communicates with the `/chat` endpoint.
+
+## Product Awareness UI
+
+The merchant dashboard now includes a **Product Awareness** tab. From this tab you can either connect your store's API or allow the bot to scan your public site:
+
+1. **API Connection** – Choose Shopify or WooCommerce and enter your API key (and secret for WooCommerce) along with your store URL. Save the settings and click **Refresh Products** to cache product data.
+2. **Structured HTML** – Select "Structured HTML" to let the backend crawl your site starting from the store or cart URL. Product information in schema.org or Open Graph format will be detected automatically.
+
+After syncing, cached products are shown along with sync status and last updated time.

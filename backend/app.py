@@ -77,6 +77,7 @@ def ensure_default_merchant():
                 email="test@example.com",
                 password_hash=generate_password_hash("password"),
                 api_key=str(uuid.uuid4()),
+                api_secret=str(uuid.uuid4()),
                 greeting="Welcome to Seep!",
                 cart_url="https://store.com/cart",
                 checkout_url="https://store.com/checkout",
@@ -190,12 +191,14 @@ def sync_custom_html_products(merchant_id: str):
     """Fetch product data from a custom HTML store."""
     with SessionLocal() as db:
         m = db.query(Merchant).get(merchant_id)
-        if not m or not m.store_domain:
+        if not m or not (m.store_domain or m.store_url or m.cart_url):
             return
         m.product_sync_status = "syncing"
         db.commit()
         products = []
-        base = f"https://{m.store_domain}"
+        base = m.store_url or m.cart_url
+        if not base and m.store_domain:
+            base = f"https://{m.store_domain}"
         try:
             resp = requests.get(base, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -261,11 +264,20 @@ def sync_api_products(merchant_id: str):
                         }
                     )
             elif m.api_type == "woocommerce":
-                resp = requests.get(
-                    f"https://{m.store_url}/wp-json/wc/v3/products",
-                    headers={"Authorization": f"Bearer {m.api_key}"},
-                    timeout=10,
-                )
+                params = {}
+                if m.api_secret:
+                    params = {"consumer_key": m.api_key, "consumer_secret": m.api_secret}
+                    resp = requests.get(
+                        f"https://{m.store_url}/wp-json/wc/v3/products",
+                        params=params,
+                        timeout=10,
+                    )
+                else:
+                    resp = requests.get(
+                        f"https://{m.store_url}/wp-json/wc/v3/products",
+                        headers={"Authorization": f"Bearer {m.api_key}"},
+                        timeout=10,
+                    )
                 for p in resp.json()[:10]:
                     img = p.get("images")
                     products.append(
@@ -458,7 +470,7 @@ def chat():
         prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
 
     product_info = "\n".join(
-        f"- {p.title}: {p.price}" for p in prods[:5] if p.title
+        f"- {p.title} ({p.price}): {p.link}" for p in prods[:5] if p.title
     )
     outdated = not prods or (
         m and m.product_last_synced and (datetime.utcnow() - m.product_last_synced).days > 7
@@ -469,6 +481,9 @@ def chat():
     keywords = ["cart", "checkout", "left item", "left in cart", "forgot"]
     if any(k in lower for k in keywords):
         abandoned_cart_flags[session_id] = True
+
+    if ("product" in lower or "price" in lower or "item" in lower) and not prods:
+        return Response("Sorry, I couldn't detect any products yet.", mimetype="text/plain")
 
     # Quick product responses
     if "bestseller" in lower and prods:
@@ -827,6 +842,7 @@ def merchant_product_settings(merchant_id):
                 m.product_method = data.get("productMethod")
                 m.api_type = data.get("apiType")
                 m.api_key = data.get("apiKey") or m.api_key
+                m.api_secret = data.get("apiSecret") or m.api_secret
                 m.store_url = data.get("storeUrl")
                 m.product_sync_status = None
                 db.commit()
@@ -839,6 +855,7 @@ def merchant_product_settings(merchant_id):
                 "productMethod": m.product_method if m else None,
                 "apiType": m.api_type if m else None,
                 "apiKey": m.api_key if m else None,
+                "apiSecret": m.api_secret if m else None,
                 "storeUrl": m.store_url if m else None,
             }
         )
@@ -872,6 +889,29 @@ def merchant_products(merchant_id):
                 else None,
             }
         )
+
+
+@app.route("/products")
+def products_public():
+    """Return cached product info for the chat widget."""
+    merchant_id = request.headers.get("x-merchant-id") or request.args.get("merchant_id")
+    if not merchant_id:
+        return jsonify({"products": []})
+    with SessionLocal() as db:
+        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
+    return jsonify(
+        {
+            "products": [
+                {
+                    "name": p.title,
+                    "price": p.price,
+                    "url": p.link,
+                    "image": p.image_url,
+                }
+                for p in prods
+            ]
+        }
+    )
 
 
 @app.route("/setup-widget")
