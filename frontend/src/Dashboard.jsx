@@ -14,6 +14,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [alert, setAlert] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -111,8 +113,34 @@ export default function Dashboard() {
   };
 
   const refreshProducts = async () => {
-    await fetch(`${API_BASE}/merchant/${merchantId}/products`, { method: 'POST' });
-    fetchData();
+    await fetch(`${API_BASE}/merchant/${merchantId}/scrape-products`, { method: 'POST' });
+    fetchProductList();
+  };
+
+  const fetchProductList = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/merchant/${merchantId}/products`);
+      const text = await res.text();
+      if (res.headers.get('content-type')?.includes('application/json')) {
+        setProductInfo(JSON.parse(text));
+      }
+    } catch (err) {
+      setSyncError('Failed to fetch products');
+    }
+  };
+
+  const syncProducts = async () => {
+    setSyncError('');
+    setSyncing(true);
+    try {
+      const res = await fetch(`${API_BASE}/merchant/${merchantId}/scrape-products`, { method: 'POST' });
+      if (!res.ok) throw new Error('sync');
+      await fetchProductList();
+    } catch (err) {
+      setSyncError('Failed to sync products');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const saveProductSettings = async () => {
@@ -320,6 +348,29 @@ export default function Dashboard() {
           <ul className="list-disc pl-5 space-y-1">
             {tips.map((t, i) => <li key={i}>{t}</li>)}
           </ul>
+        </section>
+      )}
+
+      {productInfo && (
+        <section>
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-xl font-semibold">Synced Products</h2>
+            <button onClick={syncProducts} className="bg-indigo-500 text-white px-3 py-1 rounded">
+              {syncing ? 'Syncing...' : 'Sync Products'}
+            </button>
+          </div>
+          {syncError && <p className="text-red-500 mb-2">{syncError}</p>}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {productInfo.products.map((p, i) => (
+              <div key={i} className="bg-white rounded shadow p-2 flex flex-col">
+                {p.image && <img src={p.image} alt={p.title} className="h-24 w-full object-cover mb-2" />}
+                <h3 className="font-medium text-sm truncate">{p.title}</h3>
+                <p className="text-sm text-gray-500">{p.price}</p>
+                {p.description && <p className="text-sm flex-grow">{p.description.slice(0,150)}{p.description.length>150?'...':''}</p>}
+                <a href={p.url} target="_blank" rel="noopener noreferrer" className="mt-1 text-center bg-indigo-500 text-white text-xs px-2 py-1 rounded">View</a>
+              </div>
+            ))}
+          </div>
         </section>
       )}
       {alert && (
