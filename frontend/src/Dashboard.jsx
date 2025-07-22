@@ -37,7 +37,6 @@ export default function Dashboard() {
       const toJson = async (res) => {
         const text = await res.text();
         if (!res.headers.get('content-type')?.includes('application/json')) {
-          console.warn('Expected JSON but received:', text.slice(0, 100));
           return null;
         }
         return JSON.parse(text);
