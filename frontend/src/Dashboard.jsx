@@ -112,10 +112,6 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   };
 
-  const refreshProducts = async () => {
-    await fetch(`${API_BASE}/merchant/${merchantId}/scrape-products`, { method: 'POST' });
-    fetchProductList();
-  };
 
   const fetchProductList = async () => {
     try {
@@ -133,7 +129,7 @@ export default function Dashboard() {
     setSyncError('');
     setSyncing(true);
     try {
-      const res = await fetch(`${API_BASE}/merchant/${merchantId}/scrape-products`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/products/${merchantId}`, { method: 'POST' });
       if (!res.ok) throw new Error('sync');
       await fetchProductList();
     } catch (err) {
@@ -239,56 +235,23 @@ export default function Dashboard() {
           <p>Last Updated: {productInfo.lastUpdated ? new Date(productInfo.lastUpdated).toLocaleString() : 'never'}</p>
           <div className="space-y-2 mt-2">
             <label className="block">
-              <input type="checkbox" className="mr-1" checked={productSettings?.productMethod !== 'none'} onChange={e => setProductSettings(ps => ({...ps, productMethod: e.target.checked ? 'html' : 'none'}))} />
-              Enable Product Awareness
-            </label>
-            <label className="block">
-              Method
-              <select className="ml-2" value={productSettings?.productMethod || ''} onChange={e => setProductSettings(ps => ({...ps, productMethod: e.target.value}))}>
-                <option value="none">None</option>
-                <option value="html">Structured HTML</option>
-                <option value="api">API</option>
+              Store Type
+              <select className="ml-2" value={productSettings?.storeType || 'Custom'} onChange={e => setProductSettings(ps => ({...ps, storeType: e.target.value}))}>
+                <option value="Shopify">Shopify</option>
+                <option value="WooCommerce">WooCommerce</option>
+                <option value="Custom">Custom</option>
               </select>
             </label>
-            {productSettings?.productMethod === 'api' && (
-              <>
-                <label className="block">
-                  API Type
-                  <select className="ml-2" value={productSettings.apiType || 'shopify'} onChange={e => setProductSettings(ps => ({...ps, apiType: e.target.value}))}>
-                    <option value="shopify">Shopify</option>
-                    <option value="woocommerce">WooCommerce</option>
-                  </select>
-                </label>
-                {productSettings.apiType === 'shopify' && (
-                  <>
-                    <label className="block">
-                      Shopify Store URL
-                      <input className="border ml-2" value={productSettings.shopifyDomain || ''} onChange={e => setProductSettings(ps => ({...ps, shopifyDomain: e.target.value}))} />
-                    </label>
-                    <label className="block">
-                      Storefront Access Token
-                      <input className="border ml-2" value={productSettings.shopifyToken || ''} onChange={e => setProductSettings(ps => ({...ps, shopifyToken: e.target.value}))} />
-                    </label>
-                  </>
-                )}
-                <label className="block">
-                  API Key
-                  <input className="border ml-2" value={productSettings.apiKey || ''} onChange={e => setProductSettings(ps => ({...ps, apiKey: e.target.value}))} />
-                </label>
-                {productSettings.apiType === 'woocommerce' && (
-                  <label className="block">
-                    API Secret
-                    <input className="border ml-2" value={productSettings.apiSecret || ''} onChange={e => setProductSettings(ps => ({...ps, apiSecret: e.target.value}))} />
-                  </label>
-                )}
-                <label className="block">
-                  Store URL
-                  <input className="border ml-2" value={productSettings.storeUrl || ''} onChange={e => setProductSettings(ps => ({...ps, storeUrl: e.target.value}))} />
-                </label>
-              </>
-            )}
+            <label className="block">
+              Store Domain
+              <input className="border ml-2" value={productSettings?.storeDomain || ''} onChange={e => setProductSettings(ps => ({...ps, storeDomain: e.target.value}))} />
+            </label>
+            <label className="block">
+              API Key/Token
+              <input className="border ml-2" value={productSettings?.apiKey || ''} onChange={e => setProductSettings(ps => ({...ps, apiKey: e.target.value}))} />
+            </label>
             <button onClick={saveProductSettings} className="bg-indigo-500 text-white px-4 py-1 rounded">Save Settings</button>
-            <button onClick={refreshProducts} className="ml-2 bg-indigo-500 text-white px-4 py-1 rounded">Refresh Products</button>
+            <button onClick={syncProducts} className="ml-2 bg-indigo-500 text-white px-4 py-1 rounded">Sync Products</button>
             <p className="text-sm">Products cached: {productInfo.products.length}</p>
           </div>
         </section>
