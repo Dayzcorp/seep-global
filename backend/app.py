@@ -490,9 +490,13 @@ def chat():
         scored.sort(key=lambda x: x[0], reverse=True)
         top_matches = [p for score, p in scored[:3] if score > 0.2]
 
+    preview_text = ""
     if top_matches:
         product_info = "\n".join(
             f"- {p.title} ({p.price}): {p.url}" for p in top_matches if p.title
+        )
+        preview_text = "\n\nSuggested products:\n" + "\n".join(
+            f"- {p.title} ({p.price}) {p.url}" for p in top_matches if p.title
         )
     else:
         product_info = "\n".join(
@@ -550,6 +554,9 @@ def chat():
                 token = chunk.choices[0].delta.content or ""
                 full += token
                 yield token
+            if preview_text:
+                yield preview_text
+                full += preview_text
             token_count = len(full.split())
             sess["tokens"] += token_count
             merchant_usage[merchant_id]["tokens"] += token_count
@@ -984,7 +991,109 @@ def merchant_bot_settings():
         )
 
 
-@app.route("/merchant/<merchant_id>/products", methods=["GET"])
+# Scrape products from store HTML
+
+@app.route('/merchant/<merchant_id>/scrape-products', methods=['POST'])
+
+@login_required
+
+def scrape_products(merchant_id):
+
+    """Manually scrape product data from the merchant store URL."""
+
+    if merchant_id != current_user.id:
+
+        return jsonify({'error': "unauthorized"}), 403
+
+    with SessionLocal() as db:
+
+        m = db.query(Merchant).get(merchant_id)
+
+        if not m or not m.store_url:
+
+            return jsonify({'error': "store-url-missing"}), 400
+
+        try:
+
+            resp = requests.get(m.store_url, timeout=10)
+
+            soup = BeautifulSoup(resp.text, 'html.parser')
+
+            items = _extract_products(soup, m.store_url)
+
+            added = 0
+
+            for item in items:
+
+                url = item.get('url')
+
+                if not url:
+
+                    continue
+
+                exists = (
+
+                    db.query(MerchantProduct)
+
+                    .filter_by(merchant_id=merchant_id, url=url)
+
+                    .first()
+
+                )
+
+                if exists:
+
+                    continue
+
+                db.add(
+
+                    MerchantProduct(
+
+                        merchant_id=merchant_id,
+
+                        title=item.get('title'),
+
+                        description=item.get('description'),
+
+                        price=item.get('price'),
+
+                        image_url=item.get('image'),
+
+                        url=url,
+
+                    )
+
+                )
+
+                added += 1
+
+            db.commit()
+
+            return jsonify({'status': "ok", "count": added})
+
+        except Exception:
+
+            return jsonify({'error': "scrape_failed"}), 500
+
+# Access or post products
+
+@app.route('/merchant/<merchant_id>/products', methods=['GET', 'POST'])
+
+@login_required
+
+def merchant_products(merchant_id):
+
+    if merchant_id != current_user.id:
+
+        return jsonify({'error': "unauthorized"}), 403
+
+    with SessionLocal() as db:
+
+        m = db.query(Merchant).get(merchant_id)
+
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+
+        return jsonify([p.to_dict() for p in prods])
 @login_required
 def merchant_products(merchant_id):
     if merchant_id != current_user.id:
