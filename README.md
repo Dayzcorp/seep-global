@@ -48,5 +48,9 @@ merchant account and are picked up by the chat widget automatically.
 ### Updating the database
 
 Schema changes may lead to errors such as `no such column` if an old
-`bots.db` file is present. Simply delete `backend/bots.db` and restart the
-backend to re-create the database with the latest tables.
+`bots.db` file is present. Run the helper script below to remove the
+database, recreate all tables and seed a `test-merchant` account:
+
+```bash
+python reset_db.py
+```
