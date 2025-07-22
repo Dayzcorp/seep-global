@@ -19,7 +19,7 @@ from models import (
     SessionLocal,
     init_db as init_sqlalchemy_db,
     Merchant,
-    MerchantProduct,
+    Product,
 )
 import uuid
 
@@ -216,10 +216,10 @@ def sync_custom_html_products(merchant_id: str):
                 except Exception:
                     pass
 
-            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
+            db.query(Product).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    MerchantProduct(
+                    Product(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
@@ -273,10 +273,10 @@ def sync_api_products(merchant_id: str):
                         }
                     )
 
-            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
+            db.query(Product).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    MerchantProduct(
+                    Product(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
@@ -462,7 +462,7 @@ def chat():
 
     with SessionLocal() as db:
         m = db.query(Merchant).filter_by(id=merchant_id).first()
-        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
 
     product_info = ""
     outdated = not prods or (
@@ -902,10 +902,10 @@ def sync_shopify_products(merchant_id: str):
                         "image_url": img_url,
                     }
                 )
-            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
+            db.query(Product).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    MerchantProduct(
+                    Product(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
@@ -991,67 +991,122 @@ def merchant_bot_settings():
         )
 
 
-@app.route("/merchant/<merchant_id>/scrape-products", methods=["POST"])
+# Scrape products from store HTML
+
+@app.route('/merchant/<merchant_id>/scrape-products', methods=['POST'])
+
 @login_required
+
 def scrape_products(merchant_id):
+
     """Manually scrape product data from the merchant store URL."""
+
     if merchant_id != current_user.id:
-        return jsonify({"error": "unauthorized"}), 403
+
+        return jsonify({'error': "unauthorized"}), 403
 
     with SessionLocal() as db:
+
         m = db.query(Merchant).get(merchant_id)
+
         if not m or not m.store_url:
-            return jsonify({"error": "store_url_missing"}), 400
+
+            return jsonify({'error': "store-url-missing"}), 400
 
         try:
+
             resp = requests.get(m.store_url, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
+
+            soup = BeautifulSoup(resp.text, 'html.parser')
+
             items = _extract_products(soup, m.store_url)
+
             added = 0
+
             for item in items:
-                url = item.get("url")
+
+                url = item.get('url')
+
                 if not url:
+
                     continue
+
                 exists = (
+
                     db.query(MerchantProduct)
+
                     .filter_by(merchant_id=merchant_id, url=url)
+
                     .first()
+
                 )
+
                 if exists:
+
                     continue
+
                 db.add(
+
                     MerchantProduct(
+
                         merchant_id=merchant_id,
-                        title=item.get("title"),
-                        description=item.get("description"),
-                        price=item.get("price"),
-                        image_url=item.get("image"),
+
+                        title=item.get('title'),
+
+                        description=item.get('description'),
+
+                        price=item.get('price'),
+
+                        image_url=item.get('image'),
+
                         url=url,
+
                     )
+
                 )
+
                 added += 1
+
             db.commit()
-            return jsonify({"status": "ok", "count": added})
+
+            return jsonify({'status': "ok", "count": added})
+
         except Exception:
-            return jsonify({"error": "scrape_failed"}), 500
 
+            return jsonify({'error': "scrape_failed"}), 500
 
-@app.route("/merchant/<merchant_id>/products", methods=["GET", "POST"])
+# Access or post products
+
+@app.route('/merchant/<merchant_id>/products', methods=['GET', 'POST'])
+
+@login_required
+
+def merchant_products(merchant_id):
+
+    if merchant_id != current_user.id:
+
+        return jsonify({'error': "unauthorized"}), 403
+
+    with SessionLocal() as db:
+
+        m = db.query(Merchant).get(merchant_id)
+
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+
+        return jsonify([p.to_dict() for p in prods])
 @login_required
 def merchant_products(merchant_id):
     if merchant_id != current_user.id:
         return jsonify({"error": "unauthorized"}), 403
-    if request.method == "POST":
-        sync_products_for_merchant(merchant_id)
-        return jsonify({"status": "syncing"})
     with SessionLocal() as db:
         m = db.query(Merchant).get(merchant_id)
-        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
         return jsonify(
             {
                 "products": [
                     {
                         "title": p.title,
+                        "description": p.description,
                         "price": p.price,
                         "url": p.url,
                         "image": p.image_url,
@@ -1066,6 +1121,30 @@ def merchant_products(merchant_id):
         )
 
 
+@app.route("/merchant/<merchant_id>/scrape-products", methods=["POST"])
+@login_required
+def scrape_products_route(merchant_id):
+    if merchant_id != current_user.id:
+        return jsonify({"error": "unauthorized"}), 403
+    sync_products_for_merchant(merchant_id)
+    with SessionLocal() as db:
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+        return jsonify(
+            {
+                "products": [
+                    {
+                        "title": p.title,
+                        "description": p.description,
+                        "price": p.price,
+                        "url": p.url,
+                        "image": p.image_url,
+                    }
+                    for p in prods
+                ]
+            }
+        )
+
+
 @app.route("/products")
 def products_public():
     """Return cached product info for the chat widget."""
@@ -1073,7 +1152,7 @@ def products_public():
     if not merchant_id:
         return jsonify({"products": []})
     with SessionLocal() as db:
-        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
     return jsonify(
         {
             "products": [

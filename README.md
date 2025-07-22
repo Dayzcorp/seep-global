@@ -39,6 +39,8 @@ The merchant dashboard now includes a **Product Awareness** tab. From this tab y
 
 After syncing, cached products are shown along with sync status and last updated time.
 
+A **Synced Products** section lists the cached products with thumbnails, price, short descriptions and a **Sync Products** button to trigger scraping again.
+
 A new **Customize Bot** tab lets you update the welcome greeting, choose the
 widget colour and toggle product suggestions. Changes are persisted to your
 merchant account and are picked up by the chat widget automatically.
