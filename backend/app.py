@@ -1,7 +1,7 @@
 import os
 import traceback
 from collections import defaultdict
-from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory, render_template
+from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory, render_template, redirect
 import sqlite3
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -38,6 +38,11 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Setup Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
+login_manager.login_view = "login"
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    return redirect("/login")
 
 @app.route("/")
 def index():
@@ -544,19 +549,21 @@ def register():
 
 
 @app.route("/auth/login", methods=["POST"])
-@app.route("/login", methods=["POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    data = request.get_json(force=True) or {}
-    email = data.get("email")
-    password = data.get("password")
-    if not email or not password:
-        return jsonify({"error": "email and password required"}), 400
-    with SessionLocal() as db:
-        m = db.query(Merchant).filter_by(email=email).first()
-        if not m or not m.password_hash or not check_password_hash(m.password_hash, password):
-            return jsonify({"error": "invalid"}), 401
-        login_user(m)
-    return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        email = data.get("email")
+        password = data.get("password")
+        if not email or not password:
+            return jsonify({"error": "email and password required"}), 400
+        with SessionLocal() as db:
+            m = db.query(Merchant).filter_by(email=email).first()
+            if not m or not m.password_hash or not check_password_hash(m.password_hash, password):
+                return jsonify({"error": "invalid"}), 401
+            login_user(m)
+        return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+    return render_template("login.html")
 
 
 @app.route("/logout", methods=["POST"])
