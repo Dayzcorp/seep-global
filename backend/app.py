@@ -19,7 +19,7 @@ from models import (
     SessionLocal,
     init_db as init_sqlalchemy_db,
     Merchant,
-    Product,
+    MerchantProduct,
 )
 import uuid
 
@@ -216,16 +216,16 @@ def sync_custom_html_products(merchant_id: str):
                 except Exception:
                     pass
 
-            db.query(Product).filter_by(merchant_id=merchant_id).delete()
+            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    Product(
+                    MerchantProduct(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
                         price=p.get("price"),
                         image_url=p.get("image"),
-                        product_url=p.get("url"),
+                        url=p.get("url"),
                     )
                 )
             m.product_sync_status = "success"
@@ -273,16 +273,16 @@ def sync_api_products(merchant_id: str):
                         }
                     )
 
-            db.query(Product).filter_by(merchant_id=merchant_id).delete()
+            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    Product(
+                    MerchantProduct(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
                         price=p.get("price"),
                         image_url=p.get("image_url"),
-                        product_url=p.get("link"),
+                        url=p.get("link"),
                     )
                 )
             m.product_sync_status = "success"
@@ -350,6 +350,8 @@ def merchant_config_data(merchant_id: str):
         if m:
             cfg.update(
                 {
+                    "greeting": m.greeting,
+                    "color": m.color,
                     "storeType": m.store_type,
                     "storeDomain": m.store_domain,
                     "storeApiKey": m.store_api_key,
@@ -460,11 +462,9 @@ def chat():
 
     with SessionLocal() as db:
         m = db.query(Merchant).filter_by(id=merchant_id).first()
-        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
 
-    product_info = "\n".join(
-        f"- {p.title} ({p.price}): {p.product_url}" for p in prods[:5] if p.title
-    )
+    product_info = ""
     outdated = not prods or (
         m and m.product_last_synced and (datetime.utcnow() - m.product_last_synced).days > 7
     )
@@ -478,31 +478,26 @@ def chat():
     if ("product" in lower or "price" in lower or "item" in lower) and not prods:
         return Response("Sorry, I couldn't detect any products yet.", mimetype="text/plain")
 
+    top_matches = []
     if m and m.suggest_products and prods:
-        matches = [
-            p for p in prods if (p.title and lower in p.title.lower()) or (p.description and lower in p.description.lower())
+        scored = [
+            (
+                difflib.SequenceMatcher(None, lower, f"{p.title} {p.description}").ratio(),
+                p,
+            )
+            for p in prods
         ]
-        if matches:
-            html = "".join(
-                f"<p><img src='{p.image_url}' width='50'/> <strong>{p.title}</strong> - {p.price} <a href='{p.product_url}'>View</a></p>"
-                for p in matches[:3]
-            )
-            merchant_logs[merchant_id].append(
-                {"session": session_id, "timestamp": datetime.utcnow().isoformat(), "user": user_message, "assistant": html}
-            )
-            merchant_usage[merchant_id]["requests"] += 1
-            return Response(html, mimetype="text/html")
-        else:
-            fallback = prods[:3]
-            html = "Here are a few products you might like:<br/>" + "".join(
-                f"<p><img src='{p.image_url}' width='50'/> <strong>{p.title}</strong> - {p.price} <a href='{p.product_url}'>View</a></p>"
-                for p in fallback
-            )
-            merchant_logs[merchant_id].append(
-                {"session": session_id, "timestamp": datetime.utcnow().isoformat(), "user": user_message, "assistant": html}
-            )
-            merchant_usage[merchant_id]["requests"] += 1
-            return Response(html, mimetype="text/html")
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_matches = [p for score, p in scored[:3] if score > 0.2]
+
+    if top_matches:
+        product_info = "\n".join(
+            f"- {p.title} ({p.price}): {p.url}" for p in top_matches if p.title
+        )
+    else:
+        product_info = "\n".join(
+            f"- {p.title} ({p.price}): {p.url}" for p in prods[:5] if p.title
+        )
 
     # Quick product responses
     if "bestseller" in lower and prods:
@@ -822,6 +817,12 @@ def merchant_config():
     return jsonify(merchant_config_data(merchant_id))
 
 
+@app.route("/merchant/config/<merchant_id>")
+def merchant_config_public(merchant_id):
+    """Public endpoint for the widget to fetch configuration."""
+    return jsonify(merchant_config_data(merchant_id))
+
+
 @app.route("/merchant/config", methods=["POST"])
 @login_required
 def merchant_config_save():
@@ -894,16 +895,16 @@ def sync_shopify_products(merchant_id: str):
                         "image_url": img_url,
                     }
                 )
-            db.query(Product).filter_by(merchant_id=merchant_id).delete()
+            db.query(MerchantProduct).filter_by(merchant_id=merchant_id).delete()
             for p in products:
                 db.add(
-                    Product(
+                    MerchantProduct(
                         merchant_id=merchant_id,
                         title=p.get("title"),
                         description=p.get("description"),
                         price=p.get("price"),
                         image_url=p.get("image_url"),
-                        product_url=p.get("link"),
+                        url=p.get("link"),
                     )
                 )
             m.product_sync_status = "success"
@@ -953,6 +954,36 @@ def merchant_product_settings(merchant_id):
         )
 
 
+@app.route("/merchant/bot-settings", methods=["GET", "POST"])
+@login_required
+def merchant_bot_settings():
+    """Update or fetch basic bot customization settings."""
+    merchant_id = current_user.id
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        with SessionLocal() as db:
+            m = db.query(Merchant).get(merchant_id)
+            if m:
+                if "greeting" in data:
+                    m.greeting = data.get("greeting")
+                    save_welcome(merchant_id, m.greeting or "")
+                if "color" in data:
+                    m.color = data.get("color")
+                if "suggestProducts" in data:
+                    m.suggest_products = 1 if data.get("suggestProducts") else 0
+                db.commit()
+        return jsonify({"status": "ok"})
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        return jsonify(
+            {
+                "greeting": m.greeting if m else "",
+                "color": m.color if m else "",
+                "suggestProducts": bool(m.suggest_products) if m else False,
+            }
+        )
+
+
 @app.route("/merchant/<merchant_id>/products", methods=["GET", "POST"])
 @login_required
 def merchant_products(merchant_id):
@@ -963,14 +994,14 @@ def merchant_products(merchant_id):
         return jsonify({"status": "syncing"})
     with SessionLocal() as db:
         m = db.query(Merchant).get(merchant_id)
-        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
         return jsonify(
             {
                 "products": [
                     {
                         "title": p.title,
                         "price": p.price,
-                        "url": p.product_url,
+                        "url": p.url,
                         "image": p.image_url,
                     }
                     for p in prods
@@ -990,14 +1021,14 @@ def products_public():
     if not merchant_id:
         return jsonify({"products": []})
     with SessionLocal() as db:
-        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
+        prods = db.query(MerchantProduct).filter_by(merchant_id=merchant_id).all()
     return jsonify(
         {
             "products": [
                 {
                     "name": p.title,
                     "price": p.price,
-                    "url": p.product_url,
+                    "url": p.url,
                     "image": p.image_url,
                 }
                 for p in prods

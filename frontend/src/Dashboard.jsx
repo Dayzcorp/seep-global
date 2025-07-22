@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [tips, setTips] = useState([]);
   const [productInfo, setProductInfo] = useState(null);
   const [productSettings, setProductSettings] = useState(null);
+  const [botSettings, setBotSettings] = useState(null);
   const [tab, setTab] = useState('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -18,12 +19,13 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const [uRes, lRes, sRes, pRes, psRes] = await Promise.all([
+      const [uRes, lRes, sRes, pRes, psRes, bsRes] = await Promise.all([
         fetch(`${API_BASE}/merchant/usage`),
         fetch(`${API_BASE}/merchant/logs`),
         fetch(`${API_BASE}/merchant/suggestions`),
         fetch(`${API_BASE}/merchant/${merchantId}/products`),
-        fetch(`${API_BASE}/merchant/product-settings/${merchantId}`)
+        fetch(`${API_BASE}/merchant/product-settings/${merchantId}`),
+        fetch(`${API_BASE}/merchant/bot-settings`)
       ]);
 
       if (!uRes.ok || !lRes.ok || !sRes.ok) {
@@ -44,12 +46,14 @@ export default function Dashboard() {
       const tipsData = await toJson(sRes);
       const productData = await toJson(pRes);
       const productSettingsData = await toJson(psRes);
+      const botSettingsData = await toJson(bsRes);
 
       setUsage(usageData);
       setLogs((logsData.logs || []).slice().reverse());
       setTips(tipsData.tips || []);
       setProductInfo(productData);
       setProductSettings(productSettingsData);
+      setBotSettings(botSettingsData);
     } catch (err) {
       setError('Failed to fetch data');
       setAlert('Failed to fetch data');
@@ -121,6 +125,16 @@ export default function Dashboard() {
     setAlert('Settings saved');
   };
 
+  const saveBotSettings = async () => {
+    await fetch(`${API_BASE}/merchant/bot-settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(botSettings)
+    });
+    fetchData();
+    setAlert('Settings saved');
+  };
+
   const botOnline = logs.length && (Date.now() - new Date(logs[0].timestamp)) < 5 * 60 * 1000;
 
   return (
@@ -135,6 +149,7 @@ export default function Dashboard() {
       <div className="flex gap-4 mb-4">
         <button className={tab === 'overview' ? 'font-bold' : ''} onClick={() => setTab('overview')}>Overview</button>
         <button className={tab === 'products' ? 'font-bold' : ''} onClick={() => setTab('products')}>Product Awareness</button>
+        <button className={tab === 'customize' ? 'font-bold' : ''} onClick={() => setTab('customize')}>Customize Bot</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -247,6 +262,27 @@ export default function Dashboard() {
             <button onClick={saveProductSettings} className="bg-indigo-500 text-white px-4 py-1 rounded">Save Settings</button>
             <button onClick={refreshProducts} className="ml-2 bg-indigo-500 text-white px-4 py-1 rounded">Refresh Products</button>
             <p className="text-sm">Products cached: {productInfo.products.length}</p>
+          </div>
+        </section>
+      )}
+
+      {tab === 'customize' && botSettings && (
+        <section>
+          <h2 className="text-xl font-semibold mb-2">Customize Bot</h2>
+          <div className="space-y-2 mt-2">
+            <label className="block">
+              Welcome Greeting
+              <input className="border ml-2" value={botSettings.greeting || ''} onChange={e => setBotSettings(bs => ({...bs, greeting: e.target.value}))} />
+            </label>
+            <label className="block">
+              Primary Color
+              <input type="color" className="ml-2" value={botSettings.color || '#3b82f6'} onChange={e => setBotSettings(bs => ({...bs, color: e.target.value}))} />
+            </label>
+            <label className="block">
+              <input type="checkbox" className="mr-1" checked={botSettings.suggestProducts} onChange={e => setBotSettings(bs => ({...bs, suggestProducts: e.target.checked}))} />
+              Enable Product Suggestions
+            </label>
+            <button onClick={saveBotSettings} className="bg-indigo-500 text-white px-4 py-1 rounded">Save Settings</button>
           </div>
         </section>
       )}

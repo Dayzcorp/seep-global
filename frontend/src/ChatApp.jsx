@@ -13,8 +13,7 @@ function Message({ sender, text, time }) {
 }
 
 export default function ChatApp() {
-  const params = new URLSearchParams(window.location.search);
-  const botName = params.get('bot_name') || localStorage.getItem('botName') || 'SEEP';
+  const botName = 'Seep';
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);

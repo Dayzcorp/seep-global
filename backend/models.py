@@ -48,16 +48,16 @@ class Merchant(UserMixin, Base):
     # Enable product suggestions feature
     suggest_products = Column(Integer, default=1)
 
-class Product(Base):
-    __tablename__ = 'products'
+class MerchantProduct(Base):
+    __tablename__ = 'merchant_products'
     id = Column(Integer, primary_key=True)
     merchant_id = Column(String, ForeignKey('merchants.id'))
     title = Column(String)
     description = Column(Text)
     price = Column(String)
     image_url = Column(String)
-    product_url = Column(String)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    url = Column(String)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
 
 class MerchantUsage(Base):
     __tablename__ = 'merchant_usage'
