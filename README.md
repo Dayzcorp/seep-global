@@ -38,3 +38,13 @@ The merchant dashboard now includes a **Product Awareness** tab. From this tab y
 2. **Structured HTML** – Select "Structured HTML" to let the backend crawl your site starting from the store or cart URL. Product information in schema.org or Open Graph format will be detected automatically.
 
 After syncing, cached products are shown along with sync status and last updated time.
+
+A new **Customize Bot** tab lets you update the welcome greeting, choose the
+widget colour and toggle product suggestions. Changes are persisted to your
+merchant account and are picked up by the chat widget automatically.
+
+### Updating the database
+
+Schema changes may lead to errors such as `no such column` if an old
+`bots.db` file is present. Simply delete `backend/bots.db` and restart the
+backend to re-create the database with the latest tables.
