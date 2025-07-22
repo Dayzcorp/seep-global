@@ -23,6 +23,14 @@ export default function Navbar() {
         >
           Merchant Dashboard
         </NavLink>
+        <NavLink
+          to="/login"
+          className={({ isActive }) =>
+            isActive ? 'nav-link active' : 'nav-link'
+          }
+        >
+          Login
+        </NavLink>
       </div>
     </nav>
   );

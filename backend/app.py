@@ -20,6 +20,7 @@ from models import (
     init_db as init_sqlalchemy_db,
     Merchant,
     Product,
+    ErrorLog,
 )
 import uuid
 
@@ -502,6 +503,7 @@ def merchant_config_data(merchant_id: str):
 
 
 @app.route("/auth/register", methods=["POST"])
+@app.route("/signup", methods=["POST"])
 def register():
     data = request.get_json(force=True) or {}
     email = data.get("email")
@@ -542,6 +544,7 @@ def register():
 
 
 @app.route("/auth/login", methods=["POST"])
+@app.route("/login", methods=["POST"])
 def login():
     data = request.get_json(force=True) or {}
     email = data.get("email")
@@ -556,15 +559,25 @@ def login():
     return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
 
 
+@app.route("/logout", methods=["POST"])
+def logout():
+    logout_user()
+    return jsonify({"status": "ok"})
+
+
 def get_client():
     return openai.OpenAI(api_key=API_KEY, base_url="https://openrouter.ai/api/v1")
 
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    merchant_id = request.headers.get("x-merchant-id")
+    merchant_id = None
+    if current_user.is_authenticated:
+        merchant_id = current_user.id
+    else:
+        merchant_id = request.headers.get("x-merchant-id")
     if not merchant_id:
-        return jsonify({"error": "merchant_id", "message": "x-merchant-id header required"}), 400
+        return jsonify({"error": "merchant_id", "message": "Authentication required"}), 400
 
     usage = merchant_usage[merchant_id]
     if usage["month"] != current_month():
@@ -682,11 +695,13 @@ def chat():
             )
             for chunk in response:
                 token = chunk.choices[0].delta.content or ""
+                token = token.replace("*", "")
                 full += token
                 yield token
             if preview_text:
-                yield preview_text
-                full += preview_text
+                clean_preview = preview_text.replace("*", "")
+                yield clean_preview
+                full += clean_preview
             token_count = len(full.split())
             sess["tokens"] += token_count
             merchant_usage[merchant_id]["tokens"] += token_count
@@ -886,13 +901,64 @@ def log_event():
     return jsonify({"status": "ok"})
 
 
+@app.route("/errors", methods=["POST"])
+def log_error():
+    """Record frontend error reports."""
+    data = request.get_json(force=True) or {}
+    mid = current_user.id if current_user.is_authenticated else None
+    with SessionLocal() as db:
+        db.add(
+            ErrorLog(
+                merchant_id=mid,
+                message=data.get("message"),
+                stack_trace=data.get("stack"),
+            )
+        )
+        db.commit()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/errors", methods=["GET"])
+@login_required
+def get_errors():
+    with SessionLocal() as db:
+        logs = (
+            db.query(ErrorLog)
+            .filter_by(merchant_id=current_user.id)
+            .order_by(ErrorLog.timestamp.desc())
+            .all()
+        )
+    return jsonify(
+        {
+            "errors": [
+                {
+                    "message": l.message,
+                    "stack": l.stack_trace,
+                    "timestamp": l.timestamp.isoformat(),
+                }
+                for l in logs
+            ]
+        }
+    )
+
+
 @app.route("/merchant/usage")
 @login_required
 def get_merchant_usage():
     merchant_id = current_user.id
-    data = merchant_usage.get(merchant_id, {"requests": 0, "tokens": 0})
+    data = merchant_usage.get(merchant_id, {"requests": 0, "tokens": 0, "plan": "free"})
     avg = data["tokens"] / data["requests"] if data["requests"] else 0
-    return jsonify({"requests": data["requests"], "tokens": data["tokens"], "avgTokens": avg})
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        plan = (m.plan if m else data.get("plan", "free")).lower()
+    limits = {"free": 2000, "starter": 8000, "pro": float("inf")}
+    limit = limits.get(plan, float("inf"))
+    return jsonify({
+        "requests": data["requests"],
+        "tokens": data["tokens"],
+        "avgTokens": avg,
+        "limit": None if limit == float("inf") else limit,
+    })
 
 
 @app.route('/merchant/logs')
