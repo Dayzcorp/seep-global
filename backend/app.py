@@ -1033,7 +1033,7 @@ def scrape_products(merchant_id):
 
                 exists = (
 
-                    db.query(MerchantProduct)
+                    db.query(Product)
 
                     .filter_by(merchant_id=merchant_id, url=url)
 
@@ -1047,7 +1047,7 @@ def scrape_products(merchant_id):
 
                 db.add(
 
-                    MerchantProduct(
+                    Product(
 
                         merchant_id=merchant_id,
 
@@ -1075,25 +1075,8 @@ def scrape_products(merchant_id):
 
             return jsonify({'error': "scrape_failed"}), 500
 
-# Access or post products
 
 @app.route('/merchant/<merchant_id>/products', methods=['GET', 'POST'])
-
-@login_required
-
-def merchant_products(merchant_id):
-
-    if merchant_id != current_user.id:
-
-        return jsonify({'error': "unauthorized"}), 403
-
-    with SessionLocal() as db:
-
-        m = db.query(Merchant).get(merchant_id)
-
-        prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
-
-        return jsonify([p.to_dict() for p in prods])
 @login_required
 def merchant_products(merchant_id):
     if merchant_id != current_user.id:
