@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Settings from './Settings';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_BASE;
 
 function Message({ sender, text, time }) {
   return (

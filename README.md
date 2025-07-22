@@ -9,6 +9,15 @@ This project contains a simple Flask backend and React frontend for an e-commerc
 - Tracks usage per merchant with monthly token caps tied to their subscription plan.
 - Plans are **Start**, **Grow**, and **Pro** with increasing token limits.
 
+Set the following environment variables before starting the server:
+
+```
+SECRET_KEY=your-secret-key
+ADMIN_PASSWORD=strong-admin-pass
+OPENROUTER_API_KEY=your-openrouter-key
+CORS_ORIGINS=https://your-frontend-domain
+```
+
 Install dependencies and run with:
 ```bash
 pip install -r backend/requirements.txt
@@ -18,7 +27,7 @@ python backend/app.py
 ## Frontend
 - Located in `frontend/` using Vite + React.
 - `npm install` then `npm run dev` to start the dev server.
-- Proxy rules are defined in `frontend/vite.config.js` so API calls reach `localhost:5000`.
+- Set `VITE_API_BASE` in a `.env` file to your backend URL (defaults to `http://localhost:5000` for development).
 
 Chat history and settings are kept in the browser's local storage.
 

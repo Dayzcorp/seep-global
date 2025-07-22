@@ -6,7 +6,7 @@ export default function Navbar() {
   const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:5000/me', { credentials: 'include' })
+    fetch(`${import.meta.env.VITE_API_BASE}/me`, { credentials: 'include' })
       .then(res => setLoggedIn(res.ok))
       .catch(() => setLoggedIn(false));
   }, []);
