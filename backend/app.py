@@ -1,7 +1,17 @@
 import os
 import traceback
 from collections import defaultdict
-from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory, render_template, redirect
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    Response,
+    stream_with_context,
+    send_from_directory,
+    render_template,
+    redirect,
+    session,
+)
 import sqlite3
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -98,6 +108,16 @@ def ensure_default_merchant():
 
 
 ensure_default_merchant()
+
+
+def current_mid():
+    """Return merchant id from session, login or headers."""
+    mid = session.get("merchant_id")
+    if mid:
+        return mid
+    if current_user.is_authenticated:
+        return current_user.id
+    return request.headers.get("x-merchant-id")
 
 def get_welcome(bot_name: str) -> str:
     conn = sqlite3.connect(DB_PATH)
@@ -510,7 +530,7 @@ def merchant_config_data(merchant_id: str):
 @app.route("/auth/register", methods=["POST"])
 @app.route("/signup", methods=["POST"])
 def register():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True) if request.is_json else request.form
     email = data.get("email")
     password = data.get("password")
     if not email or not password:
@@ -545,14 +565,17 @@ def register():
         if m.greeting:
             save_welcome(m.id, m.greeting)
         login_user(m)
-        return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+        session["merchant_id"] = m.id
+        if request.is_json:
+            return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+        return redirect("/dashboard")
 
 
 @app.route("/auth/login", methods=["POST"])
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        data = request.get_json(force=True) or {}
+        data = request.get_json(force=True) if request.is_json else request.form
         email = data.get("email")
         password = data.get("password")
         if not email or not password:
@@ -562,13 +585,44 @@ def login():
             if not m or not m.password_hash or not check_password_hash(m.password_hash, password):
                 return jsonify({"error": "invalid"}), 401
             login_user(m)
-        return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+            session["merchant_id"] = m.id
+        if request.is_json:
+            return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+        return redirect("/dashboard")
     return render_template("login.html")
+
+
+@app.route("/me")
+@login_required
+def me():
+    merchant_id = current_mid()
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        if not m:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify(
+            {
+                "id": m.id,
+                "email": m.email,
+                "plan": m.plan,
+                "greeting": m.greeting,
+                "color": m.color,
+                "productMethod": m.product_method,
+                "apiType": m.api_type,
+                "storeUrl": m.store_url,
+                "storeDomain": m.store_domain,
+                "apiKey": m.store_api_key,
+                "shopifyDomain": m.shopify_domain,
+                "shopifyToken": m.shopify_token,
+                "suggestProducts": bool(m.suggest_products),
+            }
+        )
 
 
 @app.route("/logout", methods=["POST"])
 def logout():
     logout_user()
+    session.pop("merchant_id", None)
     return jsonify({"status": "ok"})
 
 
@@ -578,11 +632,7 @@ def get_client():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    merchant_id = None
-    if current_user.is_authenticated:
-        merchant_id = current_user.id
-    else:
-        merchant_id = request.headers.get("x-merchant-id")
+    merchant_id = current_mid()
     if not merchant_id:
         return jsonify({"error": "merchant_id", "message": "Authentication required"}), 400
 
@@ -912,7 +962,7 @@ def log_event():
 def log_error():
     """Record frontend error reports."""
     data = request.get_json(force=True) or {}
-    mid = current_user.id if current_user.is_authenticated else None
+    mid = current_mid()
     with SessionLocal() as db:
         db.add(
             ErrorLog(
@@ -931,7 +981,7 @@ def get_errors():
     with SessionLocal() as db:
         logs = (
             db.query(ErrorLog)
-            .filter_by(merchant_id=current_user.id)
+            .filter_by(merchant_id=current_mid())
             .order_by(ErrorLog.timestamp.desc())
             .all()
         )
@@ -952,7 +1002,7 @@ def get_errors():
 @app.route("/merchant/usage")
 @login_required
 def get_merchant_usage():
-    merchant_id = current_user.id
+    merchant_id = current_mid()
     data = merchant_usage.get(merchant_id, {"requests": 0, "tokens": 0, "plan": "free"})
     avg = data["tokens"] / data["requests"] if data["requests"] else 0
     with SessionLocal() as db:
@@ -971,7 +1021,7 @@ def get_merchant_usage():
 @app.route('/merchant/logs')
 @login_required
 def get_merchant_logs():
-    merchant_id = current_user.id
+    merchant_id = current_mid()
     return jsonify({
         "logs": [
             {
@@ -990,7 +1040,7 @@ def get_merchant_logs():
 @app.route('/merchant/tips')
 @login_required
 def get_merchant_tips():
-    merchant_id = current_user.id
+    merchant_id = current_mid()
     return jsonify({
         "tips": [
             "Add product badges to highlight bestsellers.",
@@ -1004,7 +1054,7 @@ def get_merchant_tips():
 @login_required
 def merchant_suggestions():
     """Return AI-powered suggestions (dummy for now)."""
-    merchant_id = current_user.id
+    merchant_id = current_mid()
     tips = [
         "Respond quickly to customer questions.",
         "Personalize messages with customer details.",
@@ -1023,7 +1073,7 @@ def merchant_dashboard():
 @login_required
 def merchant_config():
     """Return basic configuration for the logged in merchant."""
-    merchant_id = current_user.id
+    merchant_id = current_mid()
     return jsonify(merchant_config_data(merchant_id))
 
 
@@ -1038,7 +1088,7 @@ def merchant_config_public(merchant_id):
 def merchant_config_save():
     """Save merchant configuration from the onboarding form."""
     data = request.get_json(force=True) or {}
-    merchant_id = current_user.id
+    merchant_id = current_mid()
     merchant_configs[merchant_id] = {
         "cartUrl": data.get("cartUrl", ""),
         "checkoutUrl": data.get("checkoutUrl", ""),
@@ -1132,7 +1182,7 @@ def sync_shopify_products(merchant_id: str):
 @login_required
 def merchant_product_settings(merchant_id):
     """Save or fetch product awareness configuration."""
-    if merchant_id != current_user.id:
+    if merchant_id != current_mid():
         return jsonify({"error": "unauthorized"}), 403
     if request.method == "POST":
         data = request.get_json(force=True) or {}
@@ -1160,7 +1210,7 @@ def merchant_product_settings(merchant_id):
 @login_required
 def merchant_bot_settings():
     """Update or fetch basic bot customization settings."""
-    merchant_id = current_user.id
+    merchant_id = current_mid()
     if request.method == "POST":
         data = request.get_json(force=True) or {}
         with SessionLocal() as db:
@@ -1196,7 +1246,7 @@ def scrape_products(merchant_id):
 
     """Manually scrape product data from the merchant store URL."""
 
-    if merchant_id != current_user.id:
+    if merchant_id != current_mid():
 
         return jsonify({'error': "unauthorized"}), 403
 
@@ -1274,7 +1324,7 @@ def scrape_products(merchant_id):
 @app.route('/merchant/<merchant_id>/products', methods=['GET', 'POST'])
 @login_required
 def merchant_products(merchant_id):
-    if merchant_id != current_user.id:
+    if merchant_id != current_mid():
         return jsonify({"error": "unauthorized"}), 403
     with SessionLocal() as db:
         m = db.query(Merchant).get(merchant_id)
@@ -1302,7 +1352,7 @@ def merchant_products(merchant_id):
 @login_required
 def sync_products_endpoint(merchant_id):
     """Trigger product synchronization for the merchant."""
-    if merchant_id != current_user.id:
+    if merchant_id != current_mid():
         return jsonify({"error": "unauthorized"}), 403
     sync_products_by_type(merchant_id)
     with SessionLocal() as db:
@@ -1329,7 +1379,7 @@ def sync_products_endpoint(merchant_id):
 @app.route("/merchant/<merchant_id>/scrape-products", methods=["POST"])
 @login_required
 def scrape_products_route(merchant_id):
-    if merchant_id != current_user.id:
+    if merchant_id != current_mid():
         return jsonify({"error": "unauthorized"}), 403
     sync_products_for_merchant(merchant_id)
     with SessionLocal() as db:

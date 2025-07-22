@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 const API_BASE = 'http://localhost:5000';
 
 export default function Dashboard() {
-  const [merchantId, setMerchantId] = useState('test-merchant');
+  const [merchantId, setMerchantId] = useState(null);
+  const [me, setMe] = useState(null);
   const [usage, setUsage] = useState(null);
   const [logs, setLogs] = useState([]);
   const [tips, setTips] = useState([]);
@@ -17,7 +18,26 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
 
+  const fetchMe = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/me`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMe(data);
+      setMerchantId(data.id);
+      setBotSettings({ greeting: data.greeting, color: data.color, suggestProducts: data.suggestProducts });
+      setProductSettings({
+        storeType: data.storeType,
+        storeDomain: data.storeDomain,
+        apiKey: data.apiKey,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchData = async () => {
+    if (!merchantId) return;
     setLoading(true);
     setError('');
     try {
@@ -64,8 +84,12 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchMe();
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [merchantId]);
 
   useEffect(() => {
     if (alert) {
@@ -193,6 +217,7 @@ export default function Dashboard() {
       {tab === 'overview' && usage && (
         <section>
           <h2 className="text-xl font-semibold mb-2">Usage</h2>
+          {me && <p className="mb-2 text-sm text-gray-700">Current Plan: {me.plan}</p>}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded shadow text-center">
               <p className="text-lg font-bold">{usage.requests}</p>
