@@ -31,7 +31,7 @@ MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 app = Flask(__name__)
 # Secret key for session cookies
-app.secret_key = os.getenv("SECRET_KEY", "secret-key")
+app.secret_key = os.environ.get("SECRET_KEY", "fallback-key")
 # Allow embedding from any domain
 CORS(app, resources={r"/*": {"origins": "*"}})
 
