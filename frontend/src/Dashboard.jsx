@@ -203,6 +203,12 @@ export default function Dashboard() {
               <p className="text-lg font-bold">{usage.tokens}</p>
               <p className="text-sm text-gray-500">Tokens Used</p>
             </div>
+            {usage.limit !== null && (
+              <div className="bg-white p-4 rounded shadow text-center">
+                <p className="text-lg font-bold">{usage.tokens}/{usage.limit}</p>
+                <p className="text-sm text-gray-500">Token Usage</p>
+              </div>
+            )}
             <div className="bg-white p-4 rounded shadow text-center">
               <p className="text-lg font-bold">{usage.avgTokens.toFixed ? usage.avgTokens.toFixed(1) : usage.avgTokens}</p>
               <p className="text-sm text-gray-500">Avg Tokens/Chat</p>
@@ -341,6 +347,9 @@ export default function Dashboard() {
           {alert}
         </div>
       )}
+      <footer className="text-center text-xs text-gray-400 mt-8">
+        <a href="https://docs.seep.ai" target="_blank" rel="noopener noreferrer">SEEP Documentation</a>
+      </footer>
     </div>
   );
 }

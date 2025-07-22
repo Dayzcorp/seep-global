@@ -118,6 +118,15 @@ class AnalyticsEvent(Base):
     type = Column(String)
     details = Column(Text)
 
+
+class ErrorLog(Base):
+    __tablename__ = 'error_logs'
+    id = Column(Integer, primary_key=True)
+    merchant_id = Column(String, ForeignKey('merchants.id'))
+    message = Column(Text)
+    stack_trace = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
