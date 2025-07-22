@@ -5,6 +5,7 @@ import Dashboard from './Dashboard';
 import Login from './Login';
 import Signup from './Signup';
 import Navbar from './Navbar';
+import RequireAuth from './RequireAuth';
 
 // For easier debugging, install React DevTools: https://reactjs.org/link/react-devtools
 export default function App() {
@@ -12,11 +13,26 @@ export default function App() {
     <HashRouter>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Chat />} />
-        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route
+          path="/chat"
+          element={
+            <RequireAuth>
+              <Chat />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </HashRouter>
   );
