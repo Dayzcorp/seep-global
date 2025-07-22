@@ -22,7 +22,7 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import difflib
-from datetime import datetime
+from datetime import datetime, timedelta
 from models import (
     Base,
     engine,
@@ -31,13 +31,18 @@ from models import (
     Merchant,
     Product,
     ErrorLog,
+    Plan,
+    Subscription,
+    Payment,
 )
+from sqlalchemy import func
 import uuid
 
 load_dotenv()
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "adminpass")
 
 app = Flask(__name__)
 # Secret key for session cookies
@@ -84,6 +89,18 @@ def load_user(user_id):
         return db.query(Merchant).get(user_id)
 
 
+def admin_required(f):
+    from functools import wraps
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("admin_id"):
+            return redirect("/admin/login")
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
 def ensure_default_merchant():
     with SessionLocal() as db:
         if not db.query(Merchant).filter_by(id="test-merchant").first():
@@ -105,6 +122,17 @@ def ensure_default_merchant():
             )
             db.add(m)
             db.commit()
+            plan = db.query(Plan).filter_by(name='start').first()
+            if plan:
+                sub = Subscription(
+                    merchant_id=m.id,
+                    plan_id=plan.id,
+                    start_date=datetime.utcnow(),
+                    trial_end=datetime.utcnow() + timedelta(days=7),
+                    next_bill_date=datetime.utcnow() + timedelta(days=7),
+                )
+                db.add(sub)
+                db.commit()
 
 
 ensure_default_merchant()
@@ -118,6 +146,20 @@ def current_mid():
     if current_user.is_authenticated:
         return current_user.id
     return request.headers.get("x-merchant-id")
+
+
+def get_subscription(merchant_id: str):
+    with SessionLocal() as db:
+        sub = (
+            db.query(Subscription)
+            .filter_by(merchant_id=merchant_id)
+            .order_by(Subscription.start_date.desc())
+            .first()
+        )
+        if not sub:
+            return None, None
+        plan = db.query(Plan).get(sub.plan_id)
+        return sub, plan
 
 def get_welcome(bot_name: str) -> str:
     conn = sqlite3.connect(DB_PATH)
@@ -174,7 +216,7 @@ def current_month():
 
 # Track usage per merchant
 merchant_usage = defaultdict(
-    lambda: {"tokens": 0, "plan": "free", "month": current_month(), "requests": 0}
+    lambda: {"tokens": 0, "month": current_month(), "requests": 0}
 )
 # Store chat logs per merchant
 merchant_logs = defaultdict(list)
@@ -570,6 +612,18 @@ def register():
         )
         db.add(m)
         db.commit()
+        plan_name = data.get("plan", "start").lower()
+        plan = db.query(Plan).filter_by(name=plan_name).first()
+        if plan:
+            sub = Subscription(
+                merchant_id=m.id,
+                plan_id=plan.id,
+                start_date=datetime.utcnow(),
+                trial_end=datetime.utcnow() + timedelta(days=7),
+                next_bill_date=datetime.utcnow() + timedelta(days=7),
+            )
+            db.add(sub)
+            db.commit()
         merchant_configs[m.id] = {
             "cartUrl": m.cart_url,
             "checkoutUrl": m.checkout_url,
@@ -613,11 +667,13 @@ def me():
         m = db.query(Merchant).get(merchant_id)
         if not m:
             return jsonify({"error": "not_found"}), 404
+        sub, plan = get_subscription(merchant_id)
+        plan_name = plan.name if plan else 'start'
         return jsonify(
             {
                 "id": m.id,
                 "email": m.email,
-                "plan": m.plan,
+                "plan": plan_name,
                 "greeting": m.greeting,
                 "color": m.color,
                 "productMethod": m.product_method,
@@ -656,9 +712,10 @@ def chat():
         usage["tokens"] = 0
         usage["month"] = current_month()
 
-    plan = usage.get("plan", "free").lower()
-    limits = {"free": 2000, "starter": 8000, "pro": float("inf")}
-    limit = limits.get(plan, float("inf"))
+    sub, plan = get_subscription(merchant_id)
+    limit = float("inf")
+    if plan and plan.token_limit >= 0:
+        limit = plan.token_limit
     if usage["tokens"] >= limit:
         stats["failure"] += 1
         return jsonify({"error": "limit", "message": "Token limit exceeded"}), 402
@@ -813,12 +870,17 @@ def usage_stats():
     avg_messages = monthly_messages / max(total_chats, 1)
     success_rate = stats["success"] / max(stats["success"] + stats["failure"], 1)
 
-    limits = {"free": 2000, "starter": 8000, "pro": float("inf")}
     merchants = {}
     for mid, data in merchant_usage.items():
-        limit = limits.get(data["plan"].lower(), float("inf"))
+        sub, plan = get_subscription(mid)
+        limit = float("inf")
+        plan_name = "start"
+        if plan:
+            plan_name = plan.name
+            if plan.token_limit >= 0:
+                limit = plan.token_limit
         merchants[mid] = {
-            "plan": data["plan"],
+            "plan": plan_name,
             "tokensUsed": data["tokens"],
             "tokenLimit": None if limit == float("inf") else limit,
             "month": data["month"],
@@ -1018,13 +1080,12 @@ def get_errors():
 @login_required
 def get_merchant_usage():
     merchant_id = current_mid()
-    data = merchant_usage.get(merchant_id, {"requests": 0, "tokens": 0, "plan": "free"})
+    data = merchant_usage.get(merchant_id, {"requests": 0, "tokens": 0})
     avg = data["tokens"] / data["requests"] if data["requests"] else 0
-    with SessionLocal() as db:
-        m = db.query(Merchant).get(merchant_id)
-        plan = (m.plan if m else data.get("plan", "free")).lower()
-    limits = {"free": 2000, "starter": 8000, "pro": float("inf")}
-    limit = limits.get(plan, float("inf"))
+    sub, plan = get_subscription(merchant_id)
+    limit = float("inf")
+    if plan and plan.token_limit >= 0:
+        limit = plan.token_limit
     return jsonify({
         "requests": data["requests"],
         "tokens": data["tokens"],
@@ -1473,6 +1534,92 @@ def widget_style():
         "seep-style.css",
         mimetype="text/css",
     )
+
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        data = request.get_json(force=True) if request.is_json else request.form
+        if data.get("password") == ADMIN_PASSWORD:
+            session["admin_id"] = "admin"
+            return redirect("/admin/dashboard")
+        return jsonify({"error": "invalid"}), 401
+    return "<form method='post'><input type='password' name='password'/><button>Login</button></form>"
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("admin_id", None)
+    return redirect("/admin/login")
+
+
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+    with SessionLocal() as db:
+        total = db.query(func.sum(Payment.amount_cents)).filter_by(status="success").scalar() or 0
+        merchants = db.query(Merchant).count()
+        breakdown = {}
+        for plan in db.query(Plan).all():
+            count = (
+                db.query(Subscription)
+                .filter(Subscription.plan_id == plan.id, Subscription.status == "active")
+                .count()
+            )
+            breakdown[plan.name] = count
+    return jsonify({"totalEarnings": total / 100, "merchants": merchants, "breakdown": breakdown})
+
+
+def send_email(to, subject, body):
+    print(f"Send email to {to}: {subject}")
+
+
+def process_billing():
+    now = datetime.utcnow()
+    with SessionLocal() as db:
+        subs = db.query(Subscription).filter(Subscription.status != "cancelled").all()
+        for sub in subs:
+            if sub.next_bill_date and now >= sub.next_bill_date:
+                # charge
+                plan = db.query(Plan).get(sub.plan_id)
+                success = True
+                if success:
+                    db.add(Payment(merchant_id=sub.merchant_id, amount_cents=plan.price_cents, status="success"))
+                    sub.next_bill_date = sub.next_bill_date + timedelta(days=30)
+                    sub.failed_attempts = 0
+                    sub.status = "active"
+                else:
+                    sub.failed_attempts += 1
+                    if not sub.grace_end:
+                        sub.grace_end = now + timedelta(days=3)
+                    if sub.failed_attempts >= 3 and now > sub.grace_end:
+                        sub.status = "past_due"
+                db.commit()
+            elif sub.next_bill_date - timedelta(days=7) <= now < sub.next_bill_date:
+                m = db.query(Merchant).get(sub.merchant_id)
+                if m:
+                    send_email(m.email, "Upcoming Billing", "Your subscription will renew soon.")
+
+
+@app.route("/admin/run-billing")
+@admin_required
+def admin_run_billing():
+    process_billing()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/admin/broadcast", methods=["POST"])
+@admin_required
+def admin_broadcast():
+    data = request.get_json(force=True) or {}
+    message = data.get("message")
+    if not message:
+        return jsonify({"error": "message required"}), 400
+    with SessionLocal() as db:
+        emails = [m.email for m in db.query(Merchant).all()]
+    for e in emails:
+        send_email(e, "Update", message)
+    return jsonify({"status": "ok"})
 
 
 if __name__ == "__main__":

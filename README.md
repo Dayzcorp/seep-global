@@ -6,8 +6,8 @@ This project contains a simple Flask backend and React frontend for an e-commerc
 - Located in `backend/app.py`.
 - Reads `OPENROUTER_API_KEY` from `.env` to access OpenRouter.
 - `/chat` endpoint streams responses from the model.
-- Tracks usage per merchant with monthly token limits based on plan
-  (Free: 2000 tokens, Starter: 8000 tokens, Pro: unlimited).
+- Tracks usage per merchant with monthly token caps tied to their subscription plan.
+- Plans are **Start**, **Grow**, and **Pro** with increasing token limits.
 
 Install dependencies and run with:
 ```bash

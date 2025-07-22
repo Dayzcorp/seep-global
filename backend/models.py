@@ -24,6 +24,7 @@ from sqlalchemy import (
 
 from sqlalchemy.orm import declarative_base, sessionmaker
 from flask_login import UserMixin
+from sqlalchemy.orm import relationship
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'bots.db')
 
@@ -44,7 +45,6 @@ class Merchant(UserMixin, Base):
     email = Column(String, unique=True)
     password_hash = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
-    plan = Column(String, default='free')
     color = Column(String)
     greeting = Column(Text)
     cart_url = Column(String)
@@ -67,6 +67,36 @@ class Merchant(UserMixin, Base):
     shopify_token = Column(String)
     # Enable product suggestions feature
     suggest_products = Column(Integer, default=1)
+
+
+class Plan(Base):
+    __tablename__ = 'plans'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    price_cents = Column(Integer)
+    token_limit = Column(Integer)
+
+
+class Subscription(Base):
+    __tablename__ = 'subscriptions'
+    id = Column(Integer, primary_key=True)
+    merchant_id = Column(String, ForeignKey('merchants.id'))
+    plan_id = Column(Integer, ForeignKey('plans.id'))
+    start_date = Column(DateTime, default=datetime.utcnow)
+    trial_end = Column(DateTime)
+    next_bill_date = Column(DateTime)
+    status = Column(String, default='trialing')
+    failed_attempts = Column(Integer, default=0)
+    cancelled_at = Column(DateTime)
+
+
+class Payment(Base):
+    __tablename__ = 'payments'
+    id = Column(Integer, primary_key=True)
+    merchant_id = Column(String, ForeignKey('merchants.id'))
+    amount_cents = Column(Integer)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    status = Column(String)
 
 
 class Product(Base):
@@ -129,4 +159,12 @@ class ErrorLog(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        if not db.query(Plan).count():
+            db.add_all([
+                Plan(name='start', price_cents=0, token_limit=5000),
+                Plan(name='grow', price_cents=2000, token_limit=20000),
+                Plan(name='pro', price_cents=5000, token_limit=-1),
+            ])
+            db.commit()
 
