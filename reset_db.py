@@ -2,6 +2,7 @@ import os
 import sys
 import sqlite3
 import uuid
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash
 
 # Ensure we can import modules from the backend folder
@@ -9,7 +10,7 @@ BASE_DIR = os.path.dirname(__file__)
 BACKEND_DIR = os.path.join(BASE_DIR, "backend")
 sys.path.append(BACKEND_DIR)
 
-from models import DB_PATH, init_db, SessionLocal, Merchant
+from models import DB_PATH, init_db, SessionLocal, Merchant, Plan, Subscription
 
 
 def init_sqlite_tables():
@@ -43,6 +44,17 @@ def add_default_merchant():
             )
             db.add(m)
             db.commit()
+            plan = db.query(Plan).filter_by(name='start').first()
+            if plan:
+                sub = Subscription(
+                    merchant_id=m.id,
+                    plan_id=plan.id,
+                    start_date=datetime.utcnow(),
+                    trial_end=datetime.utcnow() + timedelta(days=7),
+                    next_bill_date=datetime.utcnow() + timedelta(days=7),
+                )
+                db.add(sub)
+                db.commit()
 
 
 def main():
