@@ -35,11 +35,12 @@
   <footer>&copy; 2024 SEEP Global</footer>
   <script>
     const mid = new URLSearchParams(location.search).get('merchant_id') || 'YOUR_MERCHANT_ID';
-    const code = `<script src=\"https://seep-global.onrender.com/widget/seep-widget.js\" data-merchant-id=\"${mid}\"><\/script>`;
+    const host = window.location.origin;
+    const code = `<script src=\"${host}/widget/seep-widget.js\" data-merchant-id=\"${mid}\"><\/script>`;
     document.getElementById('embed-code').textContent = code;
     const demo = document.getElementById('demo');
     const sc = document.createElement('script');
-    sc.src = 'https://seep-global.onrender.com/widget/seep-widget.js';
+    sc.src = `${host}/widget/seep-widget.js`;
     sc.setAttribute('data-merchant-id', mid);
     demo.textContent='';
     demo.appendChild(sc);

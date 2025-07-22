@@ -34,7 +34,8 @@
       body: JSON.stringify(data)
     });
     if(res.ok){
-      const code = `<script src=\"https://seep-global.onrender.com/widget/seep-widget.js\" data-merchant-id=\"${data.merchantId}\"><\/script>`;
+      const host = window.location.origin;
+      const code = `<script src=\"${host}/widget/seep-widget.js\" data-merchant-id=\"${data.merchantId}\"><\/script>`;
       const box = document.getElementById('success');
       box.textContent = code;
       box.style.display = 'block';

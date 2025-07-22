@@ -34,6 +34,8 @@ from models import (
     Plan,
     Subscription,
     Payment,
+    MerchantUsage,
+    MerchantLog,
 )
 from sqlalchemy import func
 import uuid
@@ -42,13 +44,24 @@ load_dotenv()
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "adminpass")
+
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    raise RuntimeError("ADMIN_PASSWORD environment variable required")
 
 app = Flask(__name__)
-# Secret key for session cookies
-app.secret_key = os.environ.get("SECRET_KEY", "fallback-key")
-# Allow embedding from any domain
-CORS(app, resources={r"/*": {"origins": "*"}})
+secret = os.environ.get("SECRET_KEY")
+if not secret:
+    raise RuntimeError("SECRET_KEY environment variable required")
+app.secret_key = secret
+
+allowed_origins = os.environ.get("CORS_ORIGINS", "")
+CORS(app, resources={r"/*": {"origins": allowed_origins.split(",") if allowed_origins else []}})
+
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+)
 
 # Setup Flask-Login
 login_manager = LoginManager()
@@ -135,7 +148,8 @@ def ensure_default_merchant():
                 db.commit()
 
 
-ensure_default_merchant()
+if os.environ.get("CREATE_TEST_MERCHANT") == "1":
+    ensure_default_merchant()
 
 
 def current_mid():
@@ -160,6 +174,20 @@ def get_subscription(merchant_id: str):
             return None, None
         plan = db.query(Plan).get(sub.plan_id)
         return sub, plan
+
+
+def usage_record(db, merchant_id: str):
+    month = current_month()
+    rec = (
+        db.query(MerchantUsage)
+        .filter_by(merchant_id=merchant_id, month=month)
+        .first()
+    )
+    if not rec:
+        rec = MerchantUsage(merchant_id=merchant_id, month=month)
+        db.add(rec)
+        db.commit()
+    return rec
 
 def get_welcome(bot_name: str) -> str:
     conn = sqlite3.connect(DB_PATH)
@@ -210,16 +238,9 @@ def add_faq(question: str, answer: str):
 session_usage = defaultdict(lambda: {"requests": 0, "tokens": 0})
 # Track sessions that mentioned the cart but didn't checkout
 abandoned_cart_flags = defaultdict(bool)
-# Per merchant monthly usage
+
 def current_month():
     return datetime.utcnow().strftime("%Y-%m")
-
-# Track usage per merchant
-merchant_usage = defaultdict(
-    lambda: {"tokens": 0, "month": current_month(), "requests": 0}
-)
-# Store chat logs per merchant
-merchant_logs = defaultdict(list)
 # In-memory store for configuration and extended stats
 config = {
     "welcome_message": "",
@@ -634,7 +655,10 @@ def register():
         login_user(m)
         session["merchant_id"] = m.id
         if request.is_json:
-            return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+            with SessionLocal() as db2:
+                usage = usage_record(db2, m.id)
+                data_usage = {"requests": usage.requests, "tokens": usage.tokens, "month": usage.month}
+            return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": data_usage})
         return redirect("/dashboard")
 
 
@@ -653,8 +677,10 @@ def login():
                 return jsonify({"error": "invalid"}), 401
             login_user(m)
             session["merchant_id"] = m.id
-        if request.is_json:
-            return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": merchant_usage[m.id]})
+            if request.is_json:
+                usage = usage_record(db, m.id)
+                data_usage = {"requests": usage.requests, "tokens": usage.tokens, "month": usage.month}
+                return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": data_usage})
         return redirect("/dashboard")
     return render_template("login.html")
 
@@ -707,16 +733,20 @@ def chat():
     if not verify_widget_access(merchant_id):
         return jsonify({"error": "unauthorized", "message": "Unauthorized use of widget"}), 403
 
-    usage = merchant_usage[merchant_id]
-    if usage["month"] != current_month():
-        usage["tokens"] = 0
-        usage["month"] = current_month()
+    with SessionLocal() as db:
+        usage_rec = usage_record(db, merchant_id)
+        if usage_rec.month != current_month():
+            usage_rec.month = current_month()
+            usage_rec.tokens = 0
+            usage_rec.requests = 0
+            db.commit()
+        current_tokens = usage_rec.tokens
 
     sub, plan = get_subscription(merchant_id)
     limit = float("inf")
     if plan and plan.token_limit >= 0:
         limit = plan.token_limit
-    if usage["tokens"] >= limit:
+    if current_tokens >= limit:
         stats["failure"] += 1
         return jsonify({"error": "limit", "message": "Token limit exceeded"}), 402
 
@@ -790,17 +820,20 @@ def chat():
         if ratio > 0.6:
             token_count = len(faq["answer"].split())
             sess["tokens"] += token_count
-            merchant_usage[merchant_id]["tokens"] += token_count
-            merchant_usage[merchant_id]["requests"] += 1
+            with SessionLocal() as db:
+                u = usage_record(db, merchant_id)
+                u.tokens += token_count
+                u.requests += 1
+                db.add(
+                    MerchantLog(
+                        merchant_id=merchant_id,
+                        session=session_id,
+                        user=user_message,
+                        assistant=faq["answer"],
+                    )
+                )
+                db.commit()
             stats["success"] += 1
-            merchant_logs[merchant_id].append(
-                {
-                    "session": session_id,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "user": user_message,
-                    "assistant": faq["answer"],
-                }
-            )
             return Response(faq["answer"], mimetype="text/plain")
 
     def generate():
@@ -833,7 +866,19 @@ def chat():
                 full += clean_preview
             token_count = len(full.split())
             sess["tokens"] += token_count
-            merchant_usage[merchant_id]["tokens"] += token_count
+            with SessionLocal() as db:
+                u = usage_record(db, merchant_id)
+                u.tokens += token_count
+                db.add(u)
+                db.add(
+                    MerchantLog(
+                        merchant_id=merchant_id,
+                        session=session_id,
+                        user=user_message,
+                        assistant=full,
+                    )
+                )
+                db.commit()
         except openai.AuthenticationError:
             success = False
             yield "[Invalid API key]"
@@ -845,15 +890,19 @@ def chat():
             traceback.print_exc()
             yield "[Error fetching response]"
         finally:
-            merchant_usage[merchant_id]["requests"] += 1
-            merchant_logs[merchant_id].append(
-                {
-                    "session": session_id,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "user": user_message,
-                    "assistant": full,
-                }
-            )
+            with SessionLocal() as db:
+                u = usage_record(db, merchant_id)
+                u.requests += 1
+                db.add(u)
+                db.add(
+                    MerchantLog(
+                        merchant_id=merchant_id,
+                        session=session_id,
+                        user=user_message,
+                        assistant=full,
+                    )
+                )
+                db.commit()
             if success:
                 stats["success"] += 1
             else:
@@ -871,20 +920,21 @@ def usage_stats():
     success_rate = stats["success"] / max(stats["success"] + stats["failure"], 1)
 
     merchants = {}
-    for mid, data in merchant_usage.items():
-        sub, plan = get_subscription(mid)
-        limit = float("inf")
-        plan_name = "start"
-        if plan:
-            plan_name = plan.name
-            if plan.token_limit >= 0:
-                limit = plan.token_limit
-        merchants[mid] = {
-            "plan": plan_name,
-            "tokensUsed": data["tokens"],
-            "tokenLimit": None if limit == float("inf") else limit,
-            "month": data["month"],
-        }
+    with SessionLocal() as db:
+        for usage in db.query(MerchantUsage).all():
+            sub, plan = get_subscription(usage.merchant_id)
+            limit = float("inf")
+            plan_name = "start"
+            if plan:
+                plan_name = plan.name
+                if plan.token_limit >= 0:
+                    limit = plan.token_limit
+            merchants[usage.merchant_id] = {
+                "plan": plan_name,
+                "tokensUsed": usage.tokens,
+                "tokenLimit": None if limit == float("inf") else limit,
+                "month": usage.month,
+            }
 
     return jsonify({
         "totalChats": total_chats,
@@ -1080,15 +1130,16 @@ def get_errors():
 @login_required
 def get_merchant_usage():
     merchant_id = current_mid()
-    data = merchant_usage.get(merchant_id, {"requests": 0, "tokens": 0})
-    avg = data["tokens"] / data["requests"] if data["requests"] else 0
+    with SessionLocal() as db:
+        usage = usage_record(db, merchant_id)
+        avg = usage.tokens / usage.requests if usage.requests else 0
     sub, plan = get_subscription(merchant_id)
     limit = float("inf")
     if plan and plan.token_limit >= 0:
         limit = plan.token_limit
     return jsonify({
-        "requests": data["requests"],
-        "tokens": data["tokens"],
+        "requests": usage.requests,
+        "tokens": usage.tokens,
         "avgTokens": avg,
         "limit": None if limit == float("inf") else limit,
     })
@@ -1098,20 +1149,26 @@ def get_merchant_usage():
 @login_required
 def get_merchant_logs():
     merchant_id = current_mid()
-    return jsonify({
-        "logs": [
-            {
-                "timestamp": "2025-07-21T14:30:00",
-                "user": "How do I track my order?",
-                "assistant": "You can track your order on the 'Track Order' page or via your email confirmation."
-            },
-            {
-                "timestamp": "2025-07-21T14:32:00",
-                "user": "Do you ship to Canada?",
-                "assistant": "Yes, we ship to both the USA and Canada."
-            }
-        ]
-    })
+    with SessionLocal() as db:
+        logs = (
+            db.query(MerchantLog)
+            .filter_by(merchant_id=merchant_id)
+            .order_by(MerchantLog.timestamp.desc())
+            .limit(50)
+            .all()
+        )
+    return jsonify(
+        {
+            "logs": [
+                {
+                    "timestamp": l.timestamp.isoformat(),
+                    "user": l.user,
+                    "assistant": l.assistant,
+                }
+                for l in logs
+            ]
+        }
+    )
 
 @app.route('/merchant/tips')
 @login_required

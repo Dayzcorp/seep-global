@@ -5,8 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/chat': 'http://localhost:5000',
-      '/usage': 'http://localhost:5000'
+      '/chat': process.env.VITE_API_BASE || 'http://localhost:5000',
+      '/usage': process.env.VITE_API_BASE || 'http://localhost:5000'
     }
   }
 });
