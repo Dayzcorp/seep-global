@@ -1,11 +1,6 @@
 import os
-from datetime import datetime
 import uuid
-import os
-
 from datetime import datetime
-
-import uuid
 
 from sqlalchemy import (
 
@@ -27,9 +22,6 @@ from sqlalchemy import (
 
 )
 
-from sqlalchemy.orm import declarative_base, sessionmaker
-
-from flask_login import UserMixin
 from sqlalchemy.orm import declarative_base, sessionmaker
 from flask_login import UserMixin
 
@@ -76,16 +68,6 @@ class Merchant(UserMixin, Base):
     # Enable product suggestions feature
     suggest_products = Column(Integer, default=1)
 
-class Product(Base):
-    __tablename__ = 'merchant_products'
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    merchant_id = Column(String, ForeignKey('merchants.id'))
-    title = Column(String)
-    description = Column(Text)
-    price = Column(String)
-    image_url = Column(String)
-    url = Column(String)
-    scraped_at = Column(DateTime, default=datetime.utcnow)
 
 class Product(Base):
 
@@ -108,11 +90,7 @@ class Product(Base):
     scraped_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-
-        UniqueConstraint('title', 'url', name='uq-product-title-url'),
-
-        UniqueConstraint('merchant_id', 'url'),
-
+        UniqueConstraint("merchant_id", "url", name="uq_merchant_url"),
     )
 
 class MerchantUsage(Base):
