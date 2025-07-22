@@ -1,36 +1,49 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import './styles.css';
 
 export default function Navbar() {
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    fetch('http://localhost:5000/me', { credentials: 'include' })
+      .then(res => setLoggedIn(res.ok))
+      .catch(() => setLoggedIn(false));
+  }, []);
+
   return (
     <nav className="navbar">
       <div className="nav-links">
-        <NavLink
-          end
-          to="/"
-          className={({ isActive }) =>
-            isActive ? 'nav-link active' : 'nav-link'
-          }
-        >
-          Chat Assistant
-        </NavLink>
-        <NavLink
-          to="/dashboard"
-          className={({ isActive }) =>
-            isActive ? 'nav-link active' : 'nav-link'
-          }
-        >
-          Merchant Dashboard
-        </NavLink>
-        <NavLink
-          to="/login"
-          className={({ isActive }) =>
-            isActive ? 'nav-link active' : 'nav-link'
-          }
-        >
-          Login
-        </NavLink>
+        {loggedIn && (
+          <>
+            <NavLink
+              to="/chat"
+              className={({ isActive }) =>
+                isActive ? 'nav-link active' : 'nav-link'
+              }
+            >
+              Chat Assistant
+            </NavLink>
+            <NavLink
+              to="/dashboard"
+              className={({ isActive }) =>
+                isActive ? 'nav-link active' : 'nav-link'
+              }
+            >
+              Merchant Dashboard
+            </NavLink>
+          </>
+        )}
+        {!loggedIn && (
+          <NavLink
+            to="/login"
+            className={({ isActive }) =>
+              isActive ? 'nav-link active' : 'nav-link'
+            }
+          >
+            Login
+          </NavLink>
+        )}
       </div>
     </nav>
   );

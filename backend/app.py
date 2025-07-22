@@ -527,6 +527,19 @@ def merchant_config_data(merchant_id: str):
     return cfg
 
 
+def verify_widget_access(merchant_id: str):
+    """Return Merchant if allowed for widget usage, else None."""
+    with SessionLocal() as db:
+        m = db.query(Merchant).get(merchant_id)
+        if not m:
+            return None
+        ref = request.headers.get("Referer", "")
+        allowed = m.store_domain or m.store_url
+        if ref and allowed and allowed not in ref:
+            return None
+        return m
+
+
 @app.route("/auth/register", methods=["POST"])
 @app.route("/signup", methods=["POST"])
 def register():
@@ -635,6 +648,8 @@ def chat():
     merchant_id = current_mid()
     if not merchant_id:
         return jsonify({"error": "merchant_id", "message": "Authentication required"}), 400
+    if not verify_widget_access(merchant_id):
+        return jsonify({"error": "unauthorized", "message": "Unauthorized use of widget"}), 403
 
     usage = merchant_usage[merchant_id]
     if usage["month"] != current_month():
@@ -1080,6 +1095,8 @@ def merchant_config():
 @app.route("/merchant/config/<merchant_id>")
 def merchant_config_public(merchant_id):
     """Public endpoint for the widget to fetch configuration."""
+    if not verify_widget_access(merchant_id):
+        return jsonify({"error": "unauthorized", "message": "Unauthorized use of widget"}), 403
     return jsonify(merchant_config_data(merchant_id))
 
 
@@ -1406,6 +1423,8 @@ def products_public():
     merchant_id = request.headers.get("x-merchant-id") or request.args.get("merchant_id")
     if not merchant_id:
         return jsonify({"products": []})
+    if not verify_widget_access(merchant_id):
+        return jsonify({"error": "unauthorized", "message": "Unauthorized use of widget"}), 403
     with SessionLocal() as db:
         prods = db.query(Product).filter_by(merchant_id=merchant_id).all()
     return jsonify(

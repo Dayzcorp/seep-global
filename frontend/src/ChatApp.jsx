@@ -25,7 +25,7 @@ export default function ChatApp() {
   }, [messages, loading]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/bot/${botName}`)
+    fetch(`${API_BASE}/bot/${botName}`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.suggestion) {
@@ -52,6 +52,7 @@ export default function ChatApp() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ message: userMsg.text }),
       });
       if (!response.ok) {
