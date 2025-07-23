@@ -5,20 +5,24 @@ const API_BASE = import.meta.env.VITE_API_BASE;
 export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
-  const [plan, setPlan] = useState('start');
 
   const submit = async (e) => {
     e.preventDefault();
     setError('');
+    if (password !== confirm) {
+      setError('Passwords do not match');
+      return;
+    }
     const res = await fetch(`${API_BASE}/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, password, plan })
+      body: JSON.stringify({ email, password })
     });
     if (res.ok) {
-      window.location.href = '/dashboard';
+      window.location.href = '/setup';
     } else {
       const data = await res.json();
       setError(data.error || 'Signup failed');
@@ -32,11 +36,7 @@ export default function Signup() {
       <form onSubmit={submit} className="space-y-2">
         <input className="border p-2 w-full" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
         <input className="border p-2 w-full" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
-        <select className="border p-2 w-full" value={plan} onChange={e => setPlan(e.target.value)}>
-          <option value="start">Start</option>
-          <option value="grow">Grow</option>
-          <option value="pro">Pro</option>
-        </select>
+        <input className="border p-2 w-full" type="password" placeholder="Confirm Password" value={confirm} onChange={e => setConfirm(e.target.value)} />
         <button type="submit" className="bg-indigo-500 text-white px-4 py-2 rounded w-full">Create Account</button>
       </form>
     </div>

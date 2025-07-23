@@ -11,10 +11,19 @@ export default function Navbar() {
       .catch(() => setLoggedIn(false));
   }, []);
 
+  const logout = async () => {
+    await fetch(`${import.meta.env.VITE_API_BASE}/logout`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    setLoggedIn(false);
+    window.location.href = '/';
+  };
+
   return (
     <nav className="navbar">
       <div className="nav-links">
-        {loggedIn && (
+        {loggedIn ? (
           <>
             <NavLink
               to="/chat"
@@ -30,19 +39,39 @@ export default function Navbar() {
                 isActive ? 'nav-link active' : 'nav-link'
               }
             >
-              Merchant Dashboard
+              Dashboard
+            </NavLink>
+            <span onClick={logout} className="nav-link" style={{ cursor: 'pointer' }}>
+              Logout
+            </span>
+          </>
+        ) : (
+          <>
+            <NavLink
+              to="/"
+              className={({ isActive }) =>
+                isActive ? 'nav-link active' : 'nav-link'
+              }
+            >
+              Home
+            </NavLink>
+            <NavLink
+              to="/login"
+              className={({ isActive }) =>
+                isActive ? 'nav-link active' : 'nav-link'
+              }
+            >
+              Login
+            </NavLink>
+            <NavLink
+              to="/signup"
+              className={({ isActive }) =>
+                isActive ? 'nav-link active' : 'nav-link'
+              }
+            >
+              Sign Up
             </NavLink>
           </>
-        )}
-        {!loggedIn && (
-          <NavLink
-            to="/login"
-            className={({ isActive }) =>
-              isActive ? 'nav-link active' : 'nav-link'
-            }
-          >
-            Login
-          </NavLink>
         )}
       </div>
     </nav>
