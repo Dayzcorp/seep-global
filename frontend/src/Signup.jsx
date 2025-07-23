@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import { API_BASE } from './Settings';
 
 export default function Signup() {
   const [email, setEmail] = useState('');
@@ -15,17 +14,22 @@ export default function Signup() {
       setError('Passwords do not match');
       return;
     }
-    const res = await fetch(`${API_BASE}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password })
-    });
-    if (res.ok) {
-      window.location.href = '/setup';
-    } else {
-      const data = await res.json();
-      setError(data.error || 'Signup failed');
+    try {
+      const res = await fetch(`${API_BASE}/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      });
+      if (res.ok) {
+        window.location.href = '/setup';
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Signup failed');
+      }
+    } catch (err) {
+      console.error('Signup error:', err);
+      setError('Signup failed');
     }
   };
 

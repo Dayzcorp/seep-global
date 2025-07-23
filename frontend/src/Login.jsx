@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import { API_BASE } from './Settings';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -11,17 +10,22 @@ export default function Login() {
   const submit = async (e) => {
     e.preventDefault();
     setError('');
-    const res = await fetch(`${API_BASE}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password })
-    });
-    if (res.ok) {
-      window.location.href = '/dashboard';
-    } else {
-      const data = await res.json();
-      setError(data.error || 'Login failed');
+    try {
+      const res = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      });
+      if (res.ok) {
+        window.location.href = '/dashboard';
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Login failed');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Login failed');
     }
   };
 

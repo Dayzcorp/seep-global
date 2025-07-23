@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import { API_BASE } from './Settings';
 
 export default function SetupModal({ onClose }) {
   const [welcome, setWelcome] = useState('');
@@ -12,13 +11,17 @@ export default function SetupModal({ onClose }) {
   }, []);
 
   const save = async () => {
-    await fetch(`${API_BASE}/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ welcomeMessage: welcome, businessName: business })
-    });
-    localStorage.setItem('configSet', 'true');
-    onClose();
+    try {
+      await fetch(`${API_BASE}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ welcomeMessage: welcome, businessName: business })
+      });
+      localStorage.setItem('configSet', 'true');
+      onClose();
+    } catch (err) {
+      console.error('Setup save error:', err);
+    }
   };
 
   return (
