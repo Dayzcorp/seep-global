@@ -4,7 +4,6 @@ const API_BASE = import.meta.env.VITE_API_BASE;
 
 export default function SetupModal({ onClose }) {
   const [welcome, setWelcome] = useState('');
-  const [tone, setTone] = useState('Friendly');
   const [business, setBusiness] = useState('');
 
   useEffect(() => {
@@ -16,7 +15,7 @@ export default function SetupModal({ onClose }) {
     await fetch(`${API_BASE}/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ welcomeMessage: welcome, tone, businessName: business })
+      body: JSON.stringify({ welcomeMessage: welcome, businessName: business })
     });
     localStorage.setItem('configSet', 'true');
     onClose();
@@ -29,14 +28,6 @@ export default function SetupModal({ onClose }) {
         <label>
           Welcome message
           <input value={welcome} onChange={e => setWelcome(e.target.value)} />
-        </label>
-        <label>
-          AI tone
-          <select value={tone} onChange={e => setTone(e.target.value)}>
-            <option value="Friendly">Friendly</option>
-            <option value="Formal">Formal</option>
-            <option value="Witty">Witty</option>
-          </select>
         </label>
         <label>
           Business name

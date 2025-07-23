@@ -211,7 +211,10 @@ export default function Dashboard() {
       {loading && <p>Loading...</p>}
       {error && <p className="text-red-500">{error}</p>}
       {!loading && !usage && logs.length === 0 && !error && (
-        <p className="text-gray-500">No data found for this merchant.</p>
+        <div className="bg-white p-6 rounded shadow text-center">
+          <h2 className="text-lg font-semibold mb-2">Welcome to your dashboard</h2>
+          <p className="text-gray-500">Get started by chatting with Seep or embedding the widget on your store.</p>
+        </div>
       )}
 
       {tab === 'overview' && usage && (

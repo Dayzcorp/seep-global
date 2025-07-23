@@ -1,6 +1,10 @@
 (function(){
   var s = document.currentScript;
-  var mid = s.getAttribute('data-merchant-id') || 'test-merchant';
+  var mid = s.getAttribute('data-merchant-id');
+  if(!mid){
+    console.error('SEEP widget requires data-merchant-id');
+    return;
+  }
   var host = new URL(s.src).origin;
   var lang = navigator.language || navigator.userLanguage;
   try { localStorage.setItem('seep-lang', lang); } catch(e) {}
@@ -62,9 +66,9 @@
     config=c||{};
     var color=config.color||'#3b82f6';
     document.documentElement.style.setProperty('--seep-color', color);
-    var b=document.createElement('div');b.id='seep-bubble';b.innerHTML='Chat';
+    var b=document.createElement('div');b.id='seep-bubble';b.innerHTML='Ask Seep';
     var f=document.createElement('div');f.id='seep-container';
-    f.innerHTML='<div id="seep-header">Chat</div><div id="seep-messages"></div><div id="seep-input"><textarea rows="1"></textarea><button>Send</button></div><div id="seep-hint">Try asking about shipping, returns, or order status.</div><div id="seep-actions"></div>';
+    f.innerHTML='<div id="seep-header">Ask Seep</div><div id="seep-messages"></div><div id="seep-input"><textarea rows="1"></textarea><button>Send</button></div><div id="seep-hint">Try asking about shipping, returns, or order status.</div><div id="seep-actions"></div>';
     b.onclick=function(){
       var open=f.style.display!=='flex';
       f.style.display=open?'flex':'none';
