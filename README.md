@@ -7,7 +7,7 @@ This project contains a simple Flask backend and React frontend for an e-commerc
 - Reads `OPENROUTER_API_KEY` from `.env` to access OpenRouter.
 - `/chat` endpoint streams responses from the model.
 - Tracks usage per merchant with monthly token caps tied to their subscription plan.
-- Plans are **Starter**, **Growth**, and **Pro** with increasing token limits.
+ - Plans are **Start**, **Growth**, and **Elite** with increasing token limits.
 
 Copy `.env.template` to `.env` and set the following variables before starting the server:
 
