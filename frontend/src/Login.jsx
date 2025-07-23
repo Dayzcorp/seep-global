@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -33,6 +34,12 @@ export default function Login() {
         <input className="border p-2 w-full" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
         <button type="submit" className="bg-indigo-500 text-white px-4 py-2 rounded w-full">Login</button>
       </form>
+      <div className="text-sm mt-2">
+        <Link to="/signup" className="text-indigo-600">New here? Sign up instead</Link>
+      </div>
+      <div className="text-sm mt-1">
+        <span className="text-indigo-600 cursor-pointer">Forgot password?</span>
+      </div>
     </div>
   );
 }
