@@ -170,9 +170,9 @@ def init_db():
     with SessionLocal() as db:
         if not db.query(Plan).count():
             db.add_all([
-                Plan(name='starter', price_cents=0, token_limit=500),
-                Plan(name='growth', price_cents=2000, token_limit=2500),
-                Plan(name='pro', price_cents=5000, token_limit=10000),
+                Plan(name='start', price_cents=1499, token_limit=150000),
+                Plan(name='growth', price_cents=2500, token_limit=300000),
+                Plan(name='elite', price_cents=4999, token_limit=1000000),
             ])
             db.commit()
 

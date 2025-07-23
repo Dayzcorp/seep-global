@@ -24,7 +24,9 @@ export default function Signup() {
       if (res.ok) {
         window.location.href = '/setup';
       } else {
-        const data = await res.json();
+        const text = await res.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch (e) {}
         setError(data.error || 'Signup failed');
       }
     } catch (err) {

@@ -54,18 +54,12 @@ MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:
-    if FLASK_ENV == "development":
-        ADMIN_PASSWORD = "admin"
-    else:
-        raise RuntimeError("ADMIN_PASSWORD environment variable required")
+    raise RuntimeError("ADMIN_PASSWORD environment variable required")
 
 app = Flask(__name__)
 secret = os.environ.get("SECRET_KEY")
 if not secret:
-    if FLASK_ENV == "development":
-        secret = "dev-secret"
-    else:
-        raise RuntimeError("SECRET_KEY environment variable required")
+    raise RuntimeError("SECRET_KEY environment variable required")
 app.secret_key = secret
 
 if not API_KEY and FLASK_ENV != "development":
@@ -153,7 +147,7 @@ def ensure_default_merchant():
             )
             db.add(m)
             db.commit()
-            plan = db.query(Plan).filter_by(name='starter').first()
+            plan = db.query(Plan).filter_by(name='start').first()
             if plan:
                 sub = Subscription(
                     merchant_id=m.id,
@@ -712,7 +706,7 @@ def me():
         if not m:
             return jsonify({"error": "not_found"}), 404
         sub, plan = get_subscription(merchant_id)
-        plan_name = plan.name if plan else 'starter'
+        plan_name = plan.name if plan else 'start'
         return jsonify(
             {
                 "id": m.id,
@@ -1626,10 +1620,10 @@ def widget_style():
 def admin_login():
     if request.method == "POST":
         data = request.get_json(force=True) if request.is_json else request.form
-        if data.get("password") == ADMIN_PASSWORD:
+        if data.get("email") == "infor@seep.to" and data.get("password") == ADMIN_PASSWORD:
             session["admin_logged_in"] = True
             return redirect("/admin/dashboard")
-        error = "Invalid password"
+        error = "Invalid credentials"
         if request.is_json:
             return jsonify({"error": "invalid"}), 401
         return render_template("admin_login.html", error=error)

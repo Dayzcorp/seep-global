@@ -20,7 +20,9 @@ export default function Login() {
       if (res.ok) {
         window.location.href = '/dashboard';
       } else {
-        const data = await res.json();
+        const text = await res.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch (e) {}
         setError(data.error || 'Login failed');
       }
     } catch (err) {
