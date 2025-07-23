@@ -4,12 +4,30 @@ import './styles.css';
 
 export default function Navbar() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     fetch(`${import.meta.env.VITE_API_BASE}/me`, { credentials: 'include' })
-      .then(res => setLoggedIn(res.ok))
+      .then(async res => {
+        if (res.ok) {
+          const data = await res.json();
+          setProfile(data);
+          setLoggedIn(true);
+        } else {
+          setLoggedIn(false);
+        }
+      })
       .catch(() => setLoggedIn(false));
   }, []);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    fetch(`${import.meta.env.VITE_API_BASE}/merchant/subscription`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setProfile(p => ({ ...p, subscription: data })))
+      .catch(() => {});
+  }, [loggedIn]);
 
   const logout = async () => {
     await fetch(`${import.meta.env.VITE_API_BASE}/logout`, {
@@ -41,9 +59,20 @@ export default function Navbar() {
             >
               Dashboard
             </NavLink>
-            <span onClick={logout} className="nav-link" style={{ cursor: 'pointer' }}>
-              Logout
-            </span>
+            <div className="nav-link" style={{ position: 'relative' }}>
+              <span onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>Profile ▾</span>
+              {open && profile && (
+                <div className="profile-drop">
+                  <p className="email">{profile.email}</p>
+                  {profile.subscription && (
+                    <p className="plan">
+                      {profile.subscription.plan} – renews {profile.subscription.nextBillDate}
+                    </p>
+                  )}
+                  <button onClick={logout}>Logout</button>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <>

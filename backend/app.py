@@ -41,22 +41,39 @@ from models import (
 from sqlalchemy import func
 import uuid
 
+def capture_exception(exc: Exception):
+    """Placeholder for Sentry or other monitoring"""
+    print("[monitor]", exc)
+
 load_dotenv()
+
+FLASK_ENV = os.getenv("FLASK_ENV", "production")
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:
-    raise RuntimeError("ADMIN_PASSWORD environment variable required")
+    if FLASK_ENV == "development":
+        ADMIN_PASSWORD = "admin"
+    else:
+        raise RuntimeError("ADMIN_PASSWORD environment variable required")
 
 app = Flask(__name__)
 secret = os.environ.get("SECRET_KEY")
 if not secret:
-    raise RuntimeError("SECRET_KEY environment variable required")
+    if FLASK_ENV == "development":
+        secret = "dev-secret"
+    else:
+        raise RuntimeError("SECRET_KEY environment variable required")
 app.secret_key = secret
 
+if not API_KEY and FLASK_ENV != "development":
+    raise RuntimeError("OPENROUTER_API_KEY environment variable required")
+
 allowed_origins = os.environ.get("CORS_ORIGINS", "")
+if not allowed_origins and FLASK_ENV != "development":
+    raise RuntimeError("CORS_ORIGINS environment variable required")
 CORS(app, resources={r"/*": {"origins": allowed_origins.split(",") if allowed_origins else []}})
 
 app.config.update(
@@ -136,7 +153,7 @@ def ensure_default_merchant():
             )
             db.add(m)
             db.commit()
-            plan = db.query(Plan).filter_by(name='start').first()
+            plan = db.query(Plan).filter_by(name='starter').first()
             if plan:
                 sub = Subscription(
                     merchant_id=m.id,
@@ -149,7 +166,7 @@ def ensure_default_merchant():
                 db.commit()
 
 
-if os.environ.get("CREATE_TEST_MERCHANT") == "1":
+if os.environ.get("CREATE_TEST_MERCHANT") == "1" and FLASK_ENV == "development":
     ensure_default_merchant()
 
 
@@ -695,7 +712,7 @@ def me():
         if not m:
             return jsonify({"error": "not_found"}), 404
         sub, plan = get_subscription(merchant_id)
-        plan_name = plan.name if plan else 'start'
+        plan_name = plan.name if plan else 'starter'
         return jsonify(
             {
                 "id": m.id,
@@ -1144,6 +1161,17 @@ def get_merchant_usage():
         "avgTokens": avg,
         "limit": None if limit == float("inf") else limit,
     })
+
+
+@app.route("/merchant/subscription")
+@login_required
+def merchant_subscription():
+    mid = current_mid()
+    sub, plan = get_subscription(mid)
+    if not sub:
+        return jsonify({})
+    next_date = sub.next_bill_date.date().isoformat() if sub.next_bill_date else None
+    return jsonify({"plan": plan.name if plan else None, "nextBillDate": next_date})
 
 
 @app.route('/merchant/logs')
@@ -1647,6 +1675,47 @@ def send_email(to, subject, body):
     print(f"Send email to {to}: {subject}")
 
 
+def export_logs():
+    """Dump logs and usage to a JSON file for backups."""
+    out_dir = os.path.join(os.path.dirname(__file__), "exports")
+    os.makedirs(out_dir, exist_ok=True)
+    with SessionLocal() as db:
+        logs = db.query(MerchantLog).all()
+        usage = db.query(MerchantUsage).all()
+        errors = db.query(ErrorLog).all()
+        data = {
+            "logs": [
+                {
+                    "merchant": l.merchant_id,
+                    "user": l.user,
+                    "assistant": l.assistant,
+                    "timestamp": l.timestamp.isoformat(),
+                }
+                for l in logs
+            ],
+            "usage": [
+                {
+                    "merchant": u.merchant_id,
+                    "month": u.month,
+                    "tokens": u.tokens,
+                    "requests": u.requests,
+                }
+                for u in usage
+            ],
+            "errors": [
+                {
+                    "merchant": e.merchant_id,
+                    "message": e.message,
+                    "timestamp": e.timestamp.isoformat(),
+                }
+                for e in errors
+            ],
+        }
+    fname = os.path.join(out_dir, f"logs-{datetime.utcnow().strftime('%Y%m%d')}.json")
+    with open(fname, "w") as f:
+        json.dump(data, f)
+
+
 def process_billing():
     now = datetime.utcnow()
     with SessionLocal() as db:
@@ -1672,6 +1741,10 @@ def process_billing():
                 m = db.query(Merchant).get(sub.merchant_id)
                 if m:
                     send_email(m.email, "Upcoming Billing", "Your subscription will renew soon.")
+    try:
+        export_logs()
+    except Exception as exc:
+        capture_exception(exc)
 
 
 @app.route("/admin/run-billing")

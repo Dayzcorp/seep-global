@@ -44,6 +44,27 @@ body {
   font-weight: 700;
   border-bottom: 2px solid #6366f1;
 }
+.profile-drop {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  z-index: 10;
+  min-width: 180px;
+}
+.profile-drop .email {
+  font-weight: 600;
+}
+.profile-drop button {
+  margin-top: 4px;
+}
 .container {
   width: 100%;
   max-width: 600px;
