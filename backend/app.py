@@ -36,6 +36,7 @@ from models import (
     Payment,
     MerchantUsage,
     MerchantLog,
+    Broadcast,
 )
 from sqlalchemy import func
 import uuid
@@ -107,7 +108,7 @@ def admin_required(f):
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("admin_id"):
+        if not session.get("admin_logged_in"):
             return redirect("/admin/login")
         return f(*args, **kwargs)
 
@@ -1598,15 +1599,18 @@ def admin_login():
     if request.method == "POST":
         data = request.get_json(force=True) if request.is_json else request.form
         if data.get("password") == ADMIN_PASSWORD:
-            session["admin_id"] = "admin"
+            session["admin_logged_in"] = True
             return redirect("/admin/dashboard")
-        return jsonify({"error": "invalid"}), 401
-    return "<form method='post'><input type='password' name='password'/><button>Login</button></form>"
+        error = "Invalid password"
+        if request.is_json:
+            return jsonify({"error": "invalid"}), 401
+        return render_template("admin_login.html", error=error)
+    return render_template("admin_login.html")
 
 
 @app.route("/admin/logout")
 def admin_logout():
-    session.pop("admin_id", None)
+    session.pop("admin_logged_in", None)
     return redirect("/admin/login")
 
 
@@ -1624,7 +1628,19 @@ def admin_dashboard():
                 .count()
             )
             breakdown[plan.name] = count
-    return jsonify({"totalEarnings": total / 100, "merchants": merchants, "breakdown": breakdown})
+        broadcasts = (
+            db.query(Broadcast)
+            .order_by(Broadcast.created_at.desc())
+            .limit(5)
+            .all()
+        )
+    return render_template(
+        "admin_dashboard.html",
+        total_earnings=total / 100,
+        merchants=merchants,
+        breakdown=breakdown,
+        broadcasts=broadcasts,
+    )
 
 
 def send_email(to, subject, body):
@@ -1668,15 +1684,31 @@ def admin_run_billing():
 @app.route("/admin/broadcast", methods=["POST"])
 @admin_required
 def admin_broadcast():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True) if request.is_json else request.form
     message = data.get("message")
     if not message:
         return jsonify({"error": "message required"}), 400
     with SessionLocal() as db:
-        emails = [m.email for m in db.query(Merchant).all()]
-    for e in emails:
-        send_email(e, "Update", message)
+        db.add(Broadcast(message=message))
+        db.commit()
     return jsonify({"status": "ok"})
+
+
+@app.route("/admin/broadcasts")
+@admin_required
+def admin_broadcasts():
+    with SessionLocal() as db:
+        messages = (
+            db.query(Broadcast)
+            .order_by(Broadcast.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        result = [
+            {"id": b.id, "message": b.message, "created_at": b.created_at.isoformat()}
+            for b in messages
+        ]
+    return jsonify({"broadcasts": result})
 
 
 if __name__ == "__main__":

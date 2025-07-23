@@ -157,6 +157,14 @@ class ErrorLog(Base):
     stack_trace = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+
+class Broadcast(Base):
+    """Admin broadcast messages."""
+    __tablename__ = "broadcasts"
+    id = Column(Integer, primary_key=True)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:

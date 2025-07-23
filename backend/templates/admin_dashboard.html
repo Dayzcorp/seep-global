@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard</title>
+</head>
+<body>
+  <h1>Admin Dashboard</h1>
+  <p><strong>Total Earnings:</strong> ${{ '%.2f' % total_earnings }}</p>
+  <p><strong>Total Merchants:</strong> {{ merchants }}</p>
+  <h2>Plan Distribution</h2>
+  <ul>
+  {% for name, count in breakdown.items() %}
+    <li>{{ name }}: {{ count }}</li>
+  {% endfor %}
+  </ul>
+  <h2>Send Broadcast</h2>
+  <form action="/admin/broadcast" method="post">
+    <textarea name="message" rows="3" cols="40" required></textarea><br>
+    <button type="submit">Send</button>
+  </form>
+  <h2>Recent Broadcasts</h2>
+  <ul>
+  {% for b in broadcasts %}
+    <li>{{ b.created_at.strftime('%Y-%m-%d %H:%M') }} - {{ b.message }}</li>
+  {% endfor %}
+  </ul>
+  <p><a href="/admin/logout">Logout</a></p>
+</body>
+</html>
