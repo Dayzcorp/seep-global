@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import Settings from './Settings';
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import Settings, { API_BASE } from './Settings';
 
 function Message({ sender, text, time }) {
   return (
@@ -25,15 +23,20 @@ export default function ChatApp() {
   }, [messages, loading]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/bot/${botName}`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => {
+    const loadWelcome = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/bot/${botName}`, { credentials: 'include' });
+        const data = await res.json();
         if (data.suggestion) {
           setMessages([{ sender: 'bot', text: data.suggestion, time: new Date().toLocaleTimeString() }]);
         } else if (data.welcomeMessage) {
           setMessages([{ sender: 'bot', text: data.welcomeMessage, time: new Date().toLocaleTimeString() }]);
         }
-      });
+      } catch (err) {
+        console.error('Load welcome error:', err);
+      }
+    };
+    loadWelcome();
   }, [botName]);
 
   const sendMessage = async () => {
@@ -75,6 +78,7 @@ export default function ChatApp() {
         });
       }
     } catch (err) {
+      console.error('Chat error:', err);
       setMessages(prev => [...prev.slice(0, -1), { sender: 'bot', text: 'Bot is unavailable. Check server/API key.', time: botPlaceholder.time }]);
     } finally {
       setLoading(false);

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import { API_BASE } from './Settings';
 
 export default function Dashboard() {
   const [merchantId, setMerchantId] = useState(null);
@@ -76,6 +75,7 @@ export default function Dashboard() {
       setProductSettings(productSettingsData);
       setBotSettings(botSettingsData);
     } catch (err) {
+      console.error('Dashboard fetch error:', err);
       setError('Failed to fetch data');
       setAlert('Failed to fetch data');
     } finally {
@@ -144,6 +144,7 @@ export default function Dashboard() {
         setProductInfo(JSON.parse(text));
       }
     } catch (err) {
+      console.error('Fetch products error:', err);
       setSyncError('Failed to fetch products');
     }
   };
@@ -156,6 +157,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error('sync');
       await fetchProductList();
     } catch (err) {
+      console.error('Sync products error:', err);
       setSyncError('Failed to sync products');
     } finally {
       setSyncing(false);
@@ -163,23 +165,33 @@ export default function Dashboard() {
   };
 
   const saveProductSettings = async () => {
-    await fetch(`${API_BASE}/merchant/product-settings/${merchantId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productSettings)
-    });
-    fetchData();
-    setAlert('Settings saved');
+    try {
+      await fetch(`${API_BASE}/merchant/product-settings/${merchantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productSettings)
+      });
+      fetchData();
+      setAlert('Settings saved');
+    } catch (err) {
+      console.error('Save product settings error:', err);
+      setAlert('Failed to save settings');
+    }
   };
 
   const saveBotSettings = async () => {
-    await fetch(`${API_BASE}/merchant/bot-settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(botSettings)
-    });
-    fetchData();
-    setAlert('Settings saved');
+    try {
+      await fetch(`${API_BASE}/merchant/bot-settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(botSettings)
+      });
+      fetchData();
+      setAlert('Settings saved');
+    } catch (err) {
+      console.error('Save bot settings error:', err);
+      setAlert('Failed to save settings');
+    }
   };
 
   const botOnline = logs.length && (Date.now() - new Date(logs[0].timestamp)) < 5 * 60 * 1000;

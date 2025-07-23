@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import './styles.css';
+import { API_BASE } from './Settings';
 
 export default function Navbar() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -8,8 +9,9 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_BASE}/me`, { credentials: 'include' })
-      .then(async res => {
+    const check = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/me`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setProfile(data);
@@ -17,25 +19,39 @@ export default function Navbar() {
         } else {
           setLoggedIn(false);
         }
-      })
-      .catch(() => setLoggedIn(false));
+      } catch (err) {
+        console.error('Navbar me error:', err);
+        setLoggedIn(false);
+      }
+    };
+    check();
   }, []);
 
   useEffect(() => {
     if (!loggedIn) return;
-    fetch(`${import.meta.env.VITE_API_BASE}/merchant/subscription`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => setProfile(p => ({ ...p, subscription: data })))
-      .catch(() => {});
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/merchant/subscription`, { credentials: 'include' });
+        const data = await res.json();
+        setProfile(p => ({ ...p, subscription: data }));
+      } catch (err) {
+        console.error('Subscription fetch error:', err);
+      }
+    };
+    load();
   }, [loggedIn]);
 
   const logout = async () => {
-    await fetch(`${import.meta.env.VITE_API_BASE}/logout`, {
-      method: 'POST',
-      credentials: 'include'
-    });
-    setLoggedIn(false);
-    window.location.href = '/';
+    try {
+      await fetch(`${API_BASE}/logout`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      setLoggedIn(false);
+      window.location.href = '/';
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
 
   return (

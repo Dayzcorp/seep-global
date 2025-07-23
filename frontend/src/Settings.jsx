@@ -1,25 +1,35 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_BASE;
+export const API_BASE = import.meta.env.VITE_API_BASE;
 
 export default function Settings({ onClose }) {
   const botName = 'Seep';
   const [welcome, setWelcome] = useState('');
 
   useEffect(() => {
-    fetch(`${API_BASE}/bot/${botName}`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => setWelcome(data.welcomeMessage || ''));
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/bot/${botName}`, { credentials: 'include' });
+        const data = await res.json();
+        setWelcome(data.welcomeMessage || '');
+      } catch (err) {
+        console.error('Load settings error:', err);
+      }
+    })();
   }, []);
 
   const save = async () => {
-    await fetch(`${API_BASE}/bot/${botName}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ welcomeMessage: welcome })
-    });
-    onClose();
+    try {
+      await fetch(`${API_BASE}/bot/${botName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ welcomeMessage: welcome })
+      });
+      onClose();
+    } catch (err) {
+      console.error('Save settings error:', err);
+    }
   };
 
   return (
