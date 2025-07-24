@@ -52,6 +52,7 @@ def add_default_merchant():
                     start_date=datetime.utcnow(),
                     trial_end=datetime.utcnow() + timedelta(days=7),
                     next_bill_date=datetime.utcnow() + timedelta(days=7),
+                    stripe_subscription_id=None,
                 )
                 db.add(sub)
                 db.commit()

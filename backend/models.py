@@ -88,6 +88,8 @@ class Subscription(Base):
     status = Column(String, default='trialing')
     failed_attempts = Column(Integer, default=0)
     cancelled_at = Column(DateTime)
+    stripe_subscription_id = Column(String)
+    grace_end = Column(DateTime)
 
 
 class Payment(Base):

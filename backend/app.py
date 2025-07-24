@@ -23,6 +23,7 @@ import json
 from bs4 import BeautifulSoup
 import difflib
 from datetime import datetime, timedelta
+import stripe
 from models import (
     Base,
     engine,
@@ -48,6 +49,15 @@ def capture_exception(exc: Exception):
 load_dotenv()
 
 FLASK_ENV = os.getenv("FLASK_ENV", "production")
+
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+PRICE_IDS = {
+    "start": "price_prod_SjlcsKatfa0QcQ",
+    "growth": "price_prod_Sjldr1S1Sl15BO",
+    "elite": "price_prod_Sjlfldkj8OZm6t",
+}
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
@@ -1168,6 +1178,29 @@ def merchant_subscription():
     return jsonify({"plan": plan.name if plan else None, "nextBillDate": next_date})
 
 
+@app.route("/billing/checkout", methods=["POST"])
+@login_required
+def create_checkout_session():
+    data = request.get_json(force=True) or {}
+    plan = data.get("plan", "start").lower()
+    price_id = PRICE_IDS.get(plan)
+    if not price_id:
+        return jsonify({"error": "invalid plan"}), 400
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=current_user.email,
+            line_items=[{"price": price_id, "quantity": 1}],
+            subscription_data={"trial_period_days": 7},
+            success_url=data.get("successUrl", "https://example.com/success"),
+            cancel_url=data.get("cancelUrl", "https://example.com/cancel"),
+        )
+        return jsonify({"url": session.url})
+    except Exception as exc:
+        capture_exception(exc)
+        return jsonify({"error": "stripe"}), 500
+
+
 @app.route('/merchant/logs')
 @login_required
 def get_merchant_logs():
@@ -1715,23 +1748,27 @@ def process_billing():
     with SessionLocal() as db:
         subs = db.query(Subscription).filter(Subscription.status != "cancelled").all()
         for sub in subs:
-            if sub.next_bill_date and now >= sub.next_bill_date:
-                # charge
-                plan = db.query(Plan).get(sub.plan_id)
-                success = True
-                if success:
-                    db.add(Payment(merchant_id=sub.merchant_id, amount_cents=plan.price_cents, status="success"))
-                    sub.next_bill_date = sub.next_bill_date + timedelta(days=30)
-                    sub.failed_attempts = 0
-                    sub.status = "active"
-                else:
-                    sub.failed_attempts += 1
-                    if not sub.grace_end:
-                        sub.grace_end = now + timedelta(days=3)
-                    if sub.failed_attempts >= 3 and now > sub.grace_end:
-                        sub.status = "past_due"
-                db.commit()
-            elif sub.next_bill_date - timedelta(days=7) <= now < sub.next_bill_date:
+            if not sub.stripe_subscription_id:
+                continue
+            try:
+                stripe_sub = stripe.Subscription.retrieve(sub.stripe_subscription_id)
+            except Exception as exc:
+                capture_exception(exc)
+                continue
+            sub.status = stripe_sub.status
+            sub.next_bill_date = datetime.utcfromtimestamp(stripe_sub.current_period_end)
+            if stripe_sub.trial_end:
+                sub.trial_end = datetime.utcfromtimestamp(stripe_sub.trial_end)
+            if sub.status == "past_due":
+                if not sub.grace_end:
+                    sub.grace_end = now + timedelta(days=3)
+                elif now > sub.grace_end:
+                    sub.status = "paused"
+            else:
+                sub.grace_end = None
+                sub.failed_attempts = 0
+            db.commit()
+            if 0 < (sub.next_bill_date - now).days <= 7:
                 m = db.query(Merchant).get(sub.merchant_id)
                 if m:
                     send_email(m.email, "Upcoming Billing", "Your subscription will renew soon.")
@@ -1776,6 +1813,45 @@ def admin_broadcasts():
             for b in messages
         ]
     return jsonify({"broadcasts": result})
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig = request.headers.get("Stripe-Signature")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except Exception as exc:
+        capture_exception(exc)
+        return "", 400
+
+    if event["type"] == "checkout.session.completed":
+        sub_id = event["data"]["object"].get("subscription")
+        email = event["data"]["object"].get("customer_email")
+        with SessionLocal() as db:
+            m = db.query(Merchant).filter_by(email=email).first()
+            if m:
+                sub, _ = get_subscription(m.id)
+                if sub:
+                    sub.stripe_subscription_id = sub_id
+                    db.commit()
+    elif event["type"] == "invoice.payment_succeeded":
+        invoice = event["data"]["object"]
+        sub_id = invoice.get("subscription")
+        with SessionLocal() as db:
+            sub = db.query(Subscription).filter_by(stripe_subscription_id=sub_id).first()
+            if sub:
+                db.add(Payment(merchant_id=sub.merchant_id, amount_cents=invoice["amount_paid"], status="success"))
+                db.commit()
+    elif event["type"] == "invoice.payment_failed":
+        invoice = event["data"]["object"]
+        sub_id = invoice.get("subscription")
+        with SessionLocal() as db:
+            sub = db.query(Subscription).filter_by(stripe_subscription_id=sub_id).first()
+            if sub:
+                sub.failed_attempts += 1
+                db.commit()
+    return "", 200
 
 
 if __name__ == "__main__":

@@ -31,15 +31,11 @@ export default function Navbar() {
     if (!loggedIn) return;
     const load = async () => {
       try {
-        const [sRes, uRes] = await Promise.all([
-          fetch(`${API_BASE}/merchant/subscription`, { credentials: 'include' }),
-          fetch(`${API_BASE}/merchant/usage`, { credentials: 'include' })
-        ]);
-        const sub = await sRes.json();
-        const usage = await uRes.json();
-        setProfile(p => ({ ...p, subscription: sub, tokens: usage.tokens }));
+        const res = await fetch(`${API_BASE}/merchant/usage`, { credentials: 'include' });
+        const usage = await res.json();
+        setProfile(p => ({ ...p, tokens: usage.tokens }));
       } catch (err) {
-        console.error('Subscription fetch error:', err);
+        console.error('Usage fetch error:', err);
       }
     };
     load();
@@ -84,11 +80,7 @@ export default function Navbar() {
               {open && profile && (
                 <div className="profile-drop">
                   <p className="email">{profile.email}</p>
-                  {profile.subscription && (
-                    <p className="plan">
-                      {profile.subscription.plan} – renews {profile.subscription.nextBillDate}
-                    </p>
-                  )}
+                  {/* subscription details hidden */}
                   {profile.tokens !== undefined && (
                     <p className="tokens">Tokens Used: {profile.tokens}</p>
                   )}
