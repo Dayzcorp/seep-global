@@ -41,6 +41,7 @@ from models import (
 )
 from sqlalchemy import func
 import uuid
+import re
 
 def capture_exception(exc: Exception):
     """Placeholder for Sentry or other monitoring"""
@@ -629,20 +630,32 @@ def verify_widget_access(merchant_id: str):
 @app.route("/signup", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        data = request.get_json(force=True) if request.is_json else request.form
-        email = data.get("email")
+        data = request.get_json(silent=True) if request.is_json else request.form
+        email = (data.get("email") or "").strip()
         password = data.get("password")
         confirm = data.get("confirm")
-        if not email or not password or not confirm:
-            msg = "email, password, and confirmation required"
+
+        error = None
+        if not email:
+            error = "missing_email"
+        elif not re.fullmatch(r"[^@]+@[^@]+\.[^@]+", email):
+            error = "invalid_email"
+        elif not password:
+            error = "missing_password"
+        elif confirm is not None and password != confirm:
+            error = "password_mismatch"
+
+        if error:
+            msg_map = {
+                "missing_email": "email required",
+                "invalid_email": "invalid email",
+                "missing_password": "password required",
+                "password_mismatch": "passwords do not match",
+            }
             if request.is_json:
-                return jsonify({"error": msg}), 400
-            return render_template("signup.html", error=msg)
-        if password != confirm:
-            msg = "passwords do not match"
-            if request.is_json:
-                return jsonify({"error": "password_mismatch"}), 400
-            return render_template("signup.html", error=msg)
+                return jsonify({"error": error}), 400
+            return render_template("signup.html", error=msg_map.get(error, error))
+
         with SessionLocal() as db:
             if db.query(Merchant).filter_by(email=email).first():
                 msg = "account already exists"
@@ -656,13 +669,15 @@ def register():
             )
             db.add(m)
             db.commit()
+
         merchant_configs[m.id] = {
             "cartUrl": "",
             "checkoutUrl": "",
             "contactUrl": "",
         }
+
         if request.is_json:
-            return jsonify({"status": "created"})
+            return jsonify({"status": "created"}), 201
         return redirect("/login")
     return render_template("signup.html")
 
