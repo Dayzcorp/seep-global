@@ -1,0 +1,20 @@
+<!doctype html>
+<title>Select Plan</title>
+<h1>Choose Your Plan</h1>
+<ul>
+  <li><button onclick="choosePlan('start')">Starter - 7 day trial</button></li>
+  <li><button onclick="choosePlan('growth')">Growth - 7 day trial</button></li>
+  <li><button onclick="choosePlan('elite')">Elite - 7 day trial</button></li>
+</ul>
+<script>
+function choosePlan(plan){
+  fetch('/billing/checkout',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({plan:plan, successUrl:'/merchant/dashboard', cancelUrl:'/select-plan'})
+  }).then(r=>r.json()).then(data=>{
+    if(data.url){ window.location = data.url; }
+    else if(data.error){ alert(data.error); }
+  });
+}
+</script>

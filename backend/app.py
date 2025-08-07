@@ -96,8 +96,8 @@ def unauthorized():
 
 @app.route("/")
 def index():
-    """Simple health check for the API."""
-    return "<h1>SEEP Global API is Live</h1>"
+    """Public landing page with navigation."""
+    return render_template("landing.html")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'bots.db')
 
@@ -626,62 +626,45 @@ def verify_widget_access(merchant_id: str):
 
 
 @app.route("/auth/register", methods=["POST"])
-@app.route("/signup", methods=["POST"])
+@app.route("/signup", methods=["GET", "POST"])
 def register():
-    data = request.get_json(force=True) if request.is_json else request.form
-    email = data.get("email")
-    password = data.get("password")
-    if not email or not password:
-        return jsonify({"error": "email and password required"}), 400
-    with SessionLocal() as db:
-        if db.query(Merchant).filter_by(email=email).first():
-            return jsonify({"error": "exists"}), 400
-        m = Merchant(
-            id=str(uuid.uuid4()),
-            email=email,
-            password_hash=generate_password_hash(password),
-            greeting=data.get("greeting"),
-            color=data.get("color"),
-            cart_url=data.get("cartUrl"),
-            checkout_url=data.get("checkoutUrl"),
-            contact_url=data.get("contactUrl"),
-            api_key=data.get("apiKey"),
-            product_method=data.get("productMethod"),
-            api_type=data.get("apiType"),
-            store_url=data.get("storeUrl"),
-            shopify_domain=data.get("shopifyDomain"),
-            shopify_token=data.get("shopifyToken"),
-            suggest_products=data.get("suggestProducts", 1),
-        )
-        db.add(m)
-        db.commit()
-        plan_name = data.get("plan", "start").lower()
-        plan = db.query(Plan).filter_by(name=plan_name).first()
-        if plan:
-            sub = Subscription(
-                merchant_id=m.id,
-                plan_id=plan.id,
-                start_date=datetime.utcnow(),
-                trial_end=datetime.utcnow() + timedelta(days=7),
-                next_bill_date=datetime.utcnow() + timedelta(days=7),
+    if request.method == "POST":
+        data = request.get_json(force=True) if request.is_json else request.form
+        email = data.get("email")
+        password = data.get("password")
+        confirm = data.get("confirm")
+        if not email or not password or not confirm:
+            msg = "email, password, and confirmation required"
+            if request.is_json:
+                return jsonify({"error": msg}), 400
+            return render_template("signup.html", error=msg)
+        if password != confirm:
+            msg = "passwords do not match"
+            if request.is_json:
+                return jsonify({"error": "password_mismatch"}), 400
+            return render_template("signup.html", error=msg)
+        with SessionLocal() as db:
+            if db.query(Merchant).filter_by(email=email).first():
+                msg = "account already exists"
+                if request.is_json:
+                    return jsonify({"error": "exists"}), 400
+                return render_template("signup.html", error=msg)
+            m = Merchant(
+                id=str(uuid.uuid4()),
+                email=email,
+                password_hash=generate_password_hash(password),
             )
-            db.add(sub)
+            db.add(m)
             db.commit()
         merchant_configs[m.id] = {
-            "cartUrl": m.cart_url,
-            "checkoutUrl": m.checkout_url,
-            "contactUrl": m.contact_url,
+            "cartUrl": "",
+            "checkoutUrl": "",
+            "contactUrl": "",
         }
-        if m.greeting:
-            save_welcome(m.id, m.greeting)
-        login_user(m)
-        session["merchant_id"] = m.id
         if request.is_json:
-            with SessionLocal() as db2:
-                usage = usage_record(db2, m.id)
-                data_usage = {"requests": usage.requests, "tokens": usage.tokens, "month": usage.month}
-            return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": data_usage})
-        return redirect("/dashboard")
+            return jsonify({"status": "created"})
+        return redirect("/login")
+    return render_template("signup.html")
 
 
 @app.route("/auth/login", methods=["POST"])
@@ -699,13 +682,24 @@ def login():
                 return jsonify({"error": "invalid"}), 401
             login_user(m)
             session["merchant_id"] = m.id
+            sub, plan = get_subscription(m.id)
             if request.is_json:
                 usage = usage_record(db, m.id)
                 data_usage = {"requests": usage.requests, "tokens": usage.tokens, "month": usage.month}
-                return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": data_usage})
-        return redirect("/dashboard")
+                return jsonify({"merchantId": m.id, "config": merchant_config_data(m.id), "usage": data_usage, "plan": plan.name if plan else None})
+        if not sub:
+            return redirect("/select-plan")
+        return redirect("/merchant/dashboard")
     return render_template("login.html")
 
+@app.route("/select-plan")
+@login_required
+def select_plan():
+    """Force plan selection for new merchants."""
+    sub, _ = get_subscription(current_mid())
+    if sub:
+        return redirect("/merchant/dashboard")
+    return render_template("select_plan.html")
 
 @app.route("/me")
 @login_required
