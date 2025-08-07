@@ -27,7 +27,8 @@ export default function SetupModal({ onClose }) {
   return (
     <div className="modal">
       <div className="modal-content">
-        <h2>Store Setup</h2>
+        <h2>Welcome to Seep Global</h2>
+        <p className="text-sm mb-2">Boost sales, recover carts, and keep customers informed with product-aware AI.</p>
         <label>
           Welcome message
           <input value={welcome} onChange={e => setWelcome(e.target.value)} />

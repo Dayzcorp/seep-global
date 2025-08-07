@@ -38,6 +38,8 @@ from models import (
     MerchantUsage,
     MerchantLog,
     Broadcast,
+    DiscountCode,
+    MerchantCredit,
 )
 from sqlalchemy import func
 import uuid
@@ -52,6 +54,8 @@ load_dotenv()
 FLASK_ENV = os.getenv("FLASK_ENV", "production")
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+if not stripe.api_key:
+    raise RuntimeError("STRIPE_SECRET_KEY environment variable required")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 PRICE_IDS = {
@@ -61,6 +65,8 @@ PRICE_IDS = {
 }
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
+if not API_KEY:
+    raise RuntimeError("OPENROUTER_API_KEY environment variable required")
 MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
@@ -72,9 +78,6 @@ secret = os.environ.get("SECRET_KEY")
 if not secret:
     raise RuntimeError("SECRET_KEY environment variable required")
 app.secret_key = secret
-
-if not API_KEY and FLASK_ENV != "development":
-    raise RuntimeError("OPENROUTER_API_KEY environment variable required")
 
 allowed_origins = os.environ.get("CORS_ORIGINS", "")
 if not allowed_origins and FLASK_ENV != "development":
@@ -211,6 +214,31 @@ def usage_record(db, merchant_id: str):
         db.add(rec)
         db.commit()
     return rec
+
+
+def total_credit_tokens(db, merchant_id: str) -> int:
+    credits = db.query(MerchantCredit).filter_by(merchant_id=merchant_id).all()
+    return sum(c.tokens - c.used_tokens for c in credits)
+
+
+def consume_credits(db, merchant_id: str, tokens: int):
+    credits = (
+        db.query(MerchantCredit)
+        .filter_by(merchant_id=merchant_id)
+        .order_by(MerchantCredit.id)
+        .all()
+    )
+    remaining = tokens
+    for c in credits:
+        available = c.tokens - c.used_tokens
+        if available <= 0:
+            continue
+        take = min(available, remaining)
+        c.used_tokens += take
+        remaining -= take
+        if remaining <= 0:
+            break
+    db.commit()
 
 def get_welcome(bot_name: str) -> str:
     conn = sqlite3.connect(DB_PATH)
@@ -677,7 +705,18 @@ def register():
         }
 
         if request.is_json:
-            return jsonify({"status": "created"}), 201
+            usage = {"requests": 0, "tokens": 0, "month": current_month()}
+            return (
+                jsonify(
+                    {
+                        "merchantId": m.id,
+                        "config": merchant_config_data(m.id),
+                        "usage": usage,
+                        "plan": None,
+                    }
+                ),
+                201,
+            )
         return redirect("/login")
     return render_template("signup.html")
 
@@ -725,22 +764,18 @@ def me():
         if not m:
             return jsonify({"error": "not_found"}), 404
         sub, plan = get_subscription(merchant_id)
-        plan_name = plan.name if plan else 'start'
+        usage = usage_record(db, merchant_id)
         return jsonify(
             {
                 "id": m.id,
                 "email": m.email,
-                "plan": plan_name,
-                "greeting": m.greeting,
-                "color": m.color,
-                "productMethod": m.product_method,
-                "apiType": m.api_type,
-                "storeUrl": m.store_url,
-                "storeDomain": m.store_domain,
-                "apiKey": m.store_api_key,
-                "shopifyDomain": m.shopify_domain,
-                "shopifyToken": m.shopify_token,
-                "suggestProducts": bool(m.suggest_products),
+                "plan": plan.name if plan else "start",
+                "config": merchant_config_data(m.id),
+                "usage": {
+                    "requests": usage.requests,
+                    "tokens": usage.tokens,
+                    "month": usage.month,
+                },
             }
         )
 
@@ -772,11 +807,13 @@ def chat():
             usage_rec.requests = 0
             db.commit()
         current_tokens = usage_rec.tokens
+        extra_tokens = total_credit_tokens(db, merchant_id)
 
     sub, plan = get_subscription(merchant_id)
     limit = float("inf")
     if plan and plan.token_limit >= 0:
         limit = plan.token_limit
+    limit += extra_tokens
     if current_tokens >= limit:
         stats["failure"] += 1
         return jsonify({"error": "limit", "message": "Token limit exceeded"}), 402
@@ -855,6 +892,7 @@ def chat():
                 u = usage_record(db, merchant_id)
                 u.tokens += token_count
                 u.requests += 1
+                consume_credits(db, merchant_id, token_count)
                 db.add(
                     MerchantLog(
                         merchant_id=merchant_id,
@@ -900,6 +938,7 @@ def chat():
             with SessionLocal() as db:
                 u = usage_record(db, merchant_id)
                 u.tokens += token_count
+                consume_credits(db, merchant_id, token_count)
                 db.add(u)
                 db.add(
                     MerchantLog(
@@ -1208,6 +1247,42 @@ def create_checkout_session():
     except Exception as exc:
         capture_exception(exc)
         return jsonify({"error": "stripe"}), 500
+
+
+@app.route("/billing/cancel", methods=["POST"])
+@login_required
+def cancel_subscription():
+    mid = current_mid()
+    sub, _ = get_subscription(mid)
+    if not sub or not sub.stripe_subscription_id:
+        return jsonify({"error": "no_subscription"}), 400
+    try:
+        stripe.Subscription.delete(sub.stripe_subscription_id)
+    except Exception as exc:
+        capture_exception(exc)
+        return jsonify({"error": "stripe"}), 500
+    with SessionLocal() as db:
+        s = db.query(Subscription).get(sub.id)
+        s.status = "cancelled"
+        s.cancelled_at = datetime.utcnow()
+        db.commit()
+    return jsonify({"status": "cancelled"})
+
+
+@app.route("/billing/redeem", methods=["POST"])
+@login_required
+def redeem_code():
+    data = request.get_json(force=True) or {}
+    code = (data.get("code") or "").strip()
+    if not code:
+        return jsonify({"error": "code_required"}), 400
+    with SessionLocal() as db:
+        d = db.query(DiscountCode).filter(func.lower(DiscountCode.code) == code.lower()).first()
+        if not d:
+            return jsonify({"error": "invalid"}), 404
+        db.add(MerchantCredit(merchant_id=current_mid(), tokens=d.tokens))
+        db.commit()
+    return jsonify({"status": "ok", "tokens": d.tokens})
 
 
 @app.route('/merchant/logs')
@@ -1698,12 +1773,14 @@ def admin_dashboard():
             .limit(5)
             .all()
         )
+        discounts = db.query(DiscountCode).all()
     return render_template(
         "admin_dashboard.html",
         total_earnings=total / 100,
         merchants=merchants,
         breakdown=breakdown,
         broadcasts=broadcasts,
+        discounts=discounts,
     )
 
 
@@ -1805,6 +1882,25 @@ def admin_broadcast():
         db.add(Broadcast(message=message))
         db.commit()
     return jsonify({"status": "ok"})
+
+
+@app.route("/admin/discount", methods=["POST"])
+@admin_required
+def admin_discount():
+    data = request.get_json(force=True) if request.is_json else request.form
+    code = (data.get("code") or "").strip()
+    value = data.get("value")
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return jsonify({"error": "value required"}), 400
+    if not code:
+        return jsonify({"error": "code required"}), 400
+    tokens = int(value * 7142)
+    with SessionLocal() as db:
+        db.add(DiscountCode(code=code, tokens=tokens))
+        db.commit()
+    return jsonify({"status": "ok", "tokens": tokens})
 
 
 @app.route("/admin/broadcasts")

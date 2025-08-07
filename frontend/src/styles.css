@@ -6,7 +6,7 @@ body {
   margin: 0;
   font-family: 'Inter', sans-serif;
   line-height: 1.5;
-  background: #f9fafb;
+  background: linear-gradient(135deg, #e0e7ff, #f9fafb);
   display: flex;
   justify-content: center;
   align-items: flex-start;

@@ -32,7 +32,7 @@ export default function Login() {
   };
 
   return (
-    <div className="p-4 max-w-sm mx-auto">
+    <div className="p-6 max-w-sm mx-auto bg-white/80 backdrop-blur-md rounded shadow">
       <h1 className="text-xl font-semibold mb-4">Login</h1>
       {error && <p className="text-red-500 mb-2">{error}</p>}
       <form onSubmit={submit} className="space-y-2">

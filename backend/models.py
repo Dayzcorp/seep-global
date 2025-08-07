@@ -101,6 +101,25 @@ class Payment(Base):
     status = Column(String)
 
 
+class DiscountCode(Base):
+    """Admin generated token discounts."""
+    __tablename__ = 'discount_codes'
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, nullable=False)
+    tokens = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MerchantCredit(Base):
+    """Additional token credits granted to merchants via discount codes."""
+    __tablename__ = 'merchant_credits'
+    id = Column(Integer, primary_key=True)
+    merchant_id = Column(String, ForeignKey('merchants.id'))
+    tokens = Column(Integer, nullable=False)
+    used_tokens = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Product(Base):
 
     __tablename__ = "merchant_products"
@@ -172,9 +191,9 @@ def init_db():
     with SessionLocal() as db:
         if not db.query(Plan).count():
             db.add_all([
-                Plan(name='start', price_cents=1499, token_limit=150000),
-                Plan(name='growth', price_cents=2500, token_limit=300000),
-                Plan(name='elite', price_cents=4999, token_limit=1000000),
+                Plan(name='start', price_cents=1499, token_limit=15000),
+                Plan(name='growth', price_cents=2500, token_limit=50000),
+                Plan(name='elite', price_cents=4999, token_limit=-1),
             ])
             db.commit()
 
