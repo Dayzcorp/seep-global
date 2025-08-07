@@ -27,19 +27,14 @@ export default function Navbar() {
     check();
   }, []);
 
-  useEffect(() => {
-    if (!loggedIn) return;
-    const load = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/merchant/usage`, { credentials: 'include' });
-        const usage = await res.json();
-        setProfile(p => ({ ...p, tokens: usage.tokens }));
-      } catch (err) {
-        console.error('Usage fetch error:', err);
-      }
-    };
-    load();
-  }, [loggedIn]);
+  const cancel = async () => {
+    try {
+      await fetch(`${API_BASE}/billing/cancel`, { method: 'POST', credentials: 'include' });
+      window.location.reload();
+    } catch (err) {
+      console.error('Cancel error:', err);
+    }
+  };
 
   const logout = async () => {
     try {
@@ -80,10 +75,11 @@ export default function Navbar() {
               {open && profile && (
                 <div className="profile-drop">
                   <p className="email">{profile.email}</p>
-                  {/* subscription details hidden */}
-                  {profile.tokens !== undefined && (
-                    <p className="tokens">Tokens Used: {profile.tokens}</p>
+                  {profile.plan && <p className="plan">Plan: {profile.plan}</p>}
+                  {profile.usage && (
+                    <p className="tokens">Tokens Used: {profile.usage.tokens}</p>
                   )}
+                  <button onClick={cancel}>Cancel Plan</button>
                   <button onClick={logout}>Logout</button>
                 </div>
               )}
@@ -91,14 +87,6 @@ export default function Navbar() {
           </>
         ) : (
           <>
-            <NavLink
-              to="/"
-              className={({ isActive }) =>
-                isActive ? 'nav-link active' : 'nav-link'
-              }
-            >
-              Home
-            </NavLink>
             <NavLink
               to="/login"
               className={({ isActive }) =>

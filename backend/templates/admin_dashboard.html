@@ -20,6 +20,18 @@
     <textarea name="message" rows="3" cols="40" required></textarea><br>
     <button type="submit">Send</button>
   </form>
+  <h2>Create Discount Code</h2>
+  <form action="/admin/discount" method="post">
+    <input name="code" placeholder="CODE" required />
+    <input name="value" type="number" placeholder="Value ($)" required />
+    <button type="submit">Create</button>
+  </form>
+  <h2>Discount Codes</h2>
+  <ul>
+  {% for d in discounts %}
+    <li>{{ d.code }} - {{ d.tokens }} tokens</li>
+  {% endfor %}
+  </ul>
   <h2>Recent Broadcasts</h2>
   <ul>
   {% for b in broadcasts %}
